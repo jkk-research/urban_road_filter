@@ -1,0 +1,142 @@
+{
+  "keys": {},
+  "groups": {
+    "pluginmanager": {
+      "keys": {
+        "running-plugins": {
+          "type": "repr",
+          "repr": "{u'rqt_reconfigure/Param': [1]}"
+        }
+      },
+      "groups": {
+        "plugin__rqt_rviz__RViz__1": {
+          "keys": {},
+          "groups": {
+            "dock_widget__": {
+              "keys": {
+                "dockable": {
+                  "type": "repr",
+                  "repr": "u'true'"
+                },
+                "parent": {
+                  "type": "repr",
+                  "repr": "None"
+                },
+                "dock_widget_title": {
+                  "type": "repr",
+                  "repr": "u'RVIZsettings.rviz[*] - RViz'"
+                }
+              },
+              "groups": {}
+            },
+            "plugin": {
+              "keys": {
+                "rviz_config_file": {
+                  "type": "repr",
+                  "repr": "u''"
+                },
+                "hide_menu": {
+                  "type": "repr",
+                  "repr": "u'false'"
+                }
+              },
+              "groups": {}
+            }
+          }
+        },
+        "plugin__rqt_rviz__RViz__2": {
+          "keys": {},
+          "groups": {
+            "plugin": {
+              "keys": {
+                "rviz_config_file": {
+                  "type": "repr",
+                  "repr": "u''"
+                },
+                "hide_menu": {
+                  "type": "repr",
+                  "repr": "u'false'"
+                }
+              },
+              "groups": {}
+            }
+          }
+        },
+        "plugin__rqt_reconfigure__Param__1": {
+          "keys": {},
+          "groups": {
+            "dock_widget___plugincontainer_top_widget": {
+              "keys": {
+                "dockable": {
+                  "type": "repr",
+                  "repr": "True"
+                },
+                "parent": {
+                  "type": "repr",
+                  "repr": "None"
+                },
+                "dock_widget_title": {
+                  "type": "repr",
+                  "repr": "u'Dynamic Reconfigure'"
+                }
+              },
+              "groups": {}
+            },
+            "plugin": {
+              "keys": {
+                "expanded_nodes": {
+                  "type": "repr",
+                  "repr": "[]"
+                },
+                "splitter": {
+                  "type": "repr(QByteArray.hex)",
+                  "repr(QByteArray.hex)": "QtCore.QByteArray('000000ff0000000100000002000000ae0000006401ffffffff010000000100')",
+                  "pretty-print": "         d     "
+                },
+                "selected_nodes": {
+                  "type": "repr",
+                  "repr": "[u'/lidarSegmentation']"
+                },
+                "_splitter": {
+                  "type": "repr(QByteArray.hex)",
+                  "repr(QByteArray.hex)": "QtCore.QByteArray('000000ff00000001000000020000023a000000000100000009010000000200')",
+                  "pretty-print": "       :       "
+                },
+                "text": {
+                  "type": "repr",
+                  "repr": "u''"
+                }
+              },
+              "groups": {}
+            }
+          }
+        }
+      }
+    },
+    "mainwindow": {
+      "keys": {
+        "geometry": {
+          "type": "repr(QByteArray.hex)",
+          "repr(QByteArray.hex)": "QtCore.QByteArray('01d9d0cb0002000000000308000000ba000006ba0000035d00000308000000d8000006ba0000035d00000000000000000780')",
+          "pretty-print": "           ]       ]     "
+        },
+        "state": {
+          "type": "repr(QByteArray.hex)",
+          "repr(QByteArray.hex)": "QtCore.QByteArray('000000ff00000000fd0000000100000003000003b30000025afc0100000003fc00000000000003b30000010900fffffffc0200000002fb00000026007200710074005f007200760069007a005f005f005200560069007a005f005f0031005f005f0100000016000002c00000000000000000fb0000006c007200710074005f007200650063006f006e006600690067007500720065005f005f0050006100720061006d005f005f0031005f005f005f0070006c007500670069006e0063006f006e007400610069006e00650072005f0074006f0070005f00770069006400670065007401000000160000025a0000010f00fffffffb000000ca006c006700730076006c005f00730069006d0075006c00610074006f0072005f006200720069006400670065005f005f005200710074004c006700730076006c00530069006d0075006c00610074006f00720043006f006e0066006900670075007200610074006f00720050006c007500670069006e005f005f0031005f005f005200710074004c006700730076006c00530069006d0075006c00610074006f00720043006f006e0066006900670075007200610074006f00720050006c007500670069006e0055006901000006c5000000780000000000000000fb00000026007200710074005f007200760069007a005f005f005200560069007a005f005f0032005f005f0100000452000002eb0000000000000000000003b30000000000000004000000040000000800000008fc00000001000000030000000100000036004d0069006e0069006d0069007a006500640044006f0063006b00570069006400670065007400730054006f006f006c0062006100720000000000ffffffff0000000000000000')",
+          "pretty-print": "                                                                                                                     Z                                                                                                               x                           R                                                              "
+        }
+      },
+      "groups": {
+        "toolbar_areas": {
+          "keys": {
+            "MinimizedDockWidgetsToolbar": {
+              "type": "repr",
+              "repr": "8"
+            }
+          },
+          "groups": {}
+        }
+      }
+    }
+  }
+}
