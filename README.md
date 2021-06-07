@@ -1,7 +1,6 @@
 # `urban_road_filter`: a real-time LIDAR-based urban road and sidewalk detection algorithm for autonomous vehicles
 
-<img src="img/urban_road_filter_anim01.gif" width=274/>
-<img src="img/urban_road_filter_static01.png" width=274/>
+<img src="img/urban_road_filter_anim01.gif" width=274/><img src="img/urban_road_filter_static01.png" width=274/>
 
 # Dependency
 - [ROS](http://wiki.ros.org/ROS/Installation) (tested with Kinetic and Melodic)
