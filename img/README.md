@@ -1,5 +1,6 @@
 # Images to help understand the algoritm better
 
+![](urban_road_filter_explain01.svg)
 ![](urban_road_filter_example01.png)
 ![](urban_road_filter_example02.png)
 ![](urban_road_filter_example02zoom.svg)
