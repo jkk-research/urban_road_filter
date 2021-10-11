@@ -38,6 +38,7 @@ If you use any of this code pleas consider citing:
 
 ![](img/marker_poly01.png)
 ![](img/marker_road_high01.png)
+![](img/marker_poly02.png)
 
 - https://www.youtube.com/watch?v=9tdzo2AyaHM
 - https://www.youtube.com/watch?v=lp6q_QvWA-Y
