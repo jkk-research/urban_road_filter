@@ -96,7 +96,7 @@ find_package(catkin REQUIRED COMPONENTS
 #   cfg/DynReconf2.cfg
 # )
 generate_dynamic_reconfigure_options(
-  cfg/MyParams.cfg
+  cfg/LidarFilters.cfg
 )
 
 
