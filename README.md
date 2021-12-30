@@ -24,9 +24,21 @@ catkin build urban_road_filter
 
 # Cite & paper
 
-If you use any of this code pleas consider citing:
+If you use any of this code please consider citing the [paper](https://www.mdpi.com/1424-8220/22/1/194):
 
 ```
+
+@Article{roadfilt2022horv,
+    title = {Real-Time LIDAR-Based Urban Road and Sidewalk Detection for Autonomous Vehicles},
+    author = {Horváth, Ernő and Pozna, Claudiu and Unger, Miklós},
+    journal = {Sensors},
+    volume = {22},
+    year = {2022},
+    number = {1},
+    url = {https://www.mdpi.com/1424-8220/22/1/194},
+    issn = {1424-8220},
+    doi = {10.3390/s22010194}
+}
 ```
 
 # Realated solutions
