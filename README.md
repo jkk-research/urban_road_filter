@@ -17,17 +17,32 @@ catkin build urban_road_filter
 ```
 
 # Getting started
-
+In a **new terminal** start roscore:
 ```
+roscore
 ```
-
+In a **new terminal** go to your bag folder (e.g. `~/Downloads`):
+```
+cd ~/Downloads
+```
+Download a sample rosbag:
+``` r
+wget https://laesze-my.sharepoint.com/:u:/g/personal/herno_o365_sze_hu/EYl_ahy5pgBBhNHt5ZkiBikBoy_j_x95E96rDtTsxueB_A?download=1 -O leaf-2021-04-23-campus.bag
+```
+Play rosbag:
+``` r
+rosbag play -l ~/Downloads/leaf-2021-04-23-campus.bag
+```
+In a **new terminal** start the `urban_road_filter` node, `rviz` and `rqt_reconfigure` with roslaunch:
+```
+roslaunch urban_road_filter demo1.launch
+```
 
 # Cite & paper
 
 If you use any of this code please consider citing the [paper](https://www.mdpi.com/1424-8220/22/1/194):
 
-```
-
+``` bibtex
 @Article{roadfilt2022horv,
     title = {Real-Time LIDAR-Based Urban Road and Sidewalk Detection for Autonomous Vehicles},
     author = {Horváth, Ernő and Pozna, Claudiu and Unger, Miklós},
