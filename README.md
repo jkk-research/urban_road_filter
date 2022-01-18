@@ -17,6 +17,9 @@ catkin build urban_road_filter
 ```
 
 # Getting started
+
+Issue the following commands to start roscore, download and play sample data, and start the algorithm with visualization. You can also watch this as a [youtube tutorial](https://www.youtube.com/watch?v=HHnj4VcbSy4).
+
 In a **new terminal** start roscore:
 ```
 roscore
@@ -25,7 +28,7 @@ In a **new terminal** go to your bag folder (e.g. `~/Downloads`):
 ```
 cd ~/Downloads
 ```
-Download a sample rosbag:
+Download a sample rosbag (~3,3 GB):
 ``` r
 wget https://laesze-my.sharepoint.com/:u:/g/personal/herno_o365_sze_hu/EYl_ahy5pgBBhNHt5ZkiBikBoy_j_x95E96rDtTsxueB_A?download=1 -O leaf-2021-04-23-campus.bag
 ```
@@ -62,10 +65,13 @@ If you use any of this code please consider citing the [paper](https://www.mdpi.
 
 # Videos and images
 
+[<img src="img/yt_demo01.png" width=213/>](https://www.youtube.com/watch?v=T2qi4pldR-E)
+[<img src="img/yt_tutorial01.png" width=213/>](https://www.youtube.com/watch?v=HHnj4VcbSy4)
 
-![](img/marker_poly01.png)
-![](img/marker_road_high01.png)
-![](img/marker_poly02.png)
+[<img src="img/yt_demo02.png" width=213/>](https://www.youtube.com/watch?v=9tdzo2AyaHM)
+[<img src="img/yt_demo03.png" width=213/>](https://www.youtube.com/watch?v=lp6q_QvWA-Y)
 
-- https://www.youtube.com/watch?v=9tdzo2AyaHM
-- https://www.youtube.com/watch?v=lp6q_QvWA-Y
+<img src="img/marker_poly01.png" width=440/>
+<img src="img/marker_road_high01.png" width=440/>
+<img src="img/marker_poly02.png" width=440/>
+
