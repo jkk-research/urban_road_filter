@@ -26,6 +26,19 @@
 
 #include "starShapedSearch.cpp"
 
+/*ramer-douglas-peucker*/
+#include <boost/geometry.hpp>
+#include <boost/geometry/geometries/linestring.hpp>
+#include <boost/geometry/geometries/point_xy.hpp>
+#include <boost/assign.hpp>
+
+using namespace boost::assign;
+
+typedef boost::geometry::model::d2::point_xy<float> xy;
+boost::geometry::model::linestring<xy> line;
+boost::geometry::model::linestring<xy> simplified;
+
+
 /*Global variables.*/
 int channels = 64;                                    /* The number of channels of the LIDAR .*/
 std::string fixedFrame;                               /* Fixed Frame.*/
@@ -41,6 +54,14 @@ float angleFilter1;                                   /*X = 0 érték mellett, h
 float angleFilter2;                                   /*Z = 0 érték mellett, két vektor által bezárt szög.*/
 float angleFilter3;                                   /*Csaplár László kódjához szükséges. Sugár irányú határérték (fokban).*/
 float min_X, max_X, min_Y, max_Y, min_Z, max_Z;       /*A vizsgált terület méretei.*/
+
+bool polysimp_allow = true;                           /*polygon-eygszerűsítés engedélyezése*/
+bool zavg_allow = true;                               /*egyszerűsített polygon z-koordinátái átlagból (engedély)*/
+float polysimp = 0.5;                                 /*polygon-egyszerűsítési tényező (Ramer-Douglas-Peucker)*/
+float polyz = -1.5;                                   /*manuálisan megadott z-koordináta (polygon)*/
+
+int ghostcount = 0;                                   /* segédváltozó az elavult markerek (ghost) eltávolításához */
+
 
 /*A paraméterek beállítása.*/
 void paramsCallback(lidar_filters_pkg::LidarFiltersConfig &config, uint32_t level)
@@ -68,6 +89,10 @@ void paramsCallback(lidar_filters_pkg::LidarFiltersConfig &config, uint32_t leve
     dmin_param = config.dmin_param;
     kdev_param = config.kdev_param;
     kdist_param = config.kdist_param;
+    polysimp_allow = config.simple_poly_allow;
+    polysimp = config.poly_s_param;
+    zavg_allow = config.poly_z_avg_allow;
+    polyz = config.poly_z_manual;
     ROS_INFO("Updated params %s", ros::this_node::getName().c_str());
 }
 
@@ -883,6 +908,7 @@ void filtered(const pcl::PointCloud<pcl::PointXYZ> &cloud)
             visualization_msgs::MarkerArray ma;    /*Egy marker array, amiben a zöld / piros line strip-ek kerülnek.*/
             visualization_msgs::Marker line_strip; /*Az adott zöld vagy piros szakasz / line strip.*/
             geometry_msgs::Point point;            /*Az adott pont értékei. Ez tölti fel az adott line stip-et.*/
+float zavg = 0.0;                      /*Átlagos z-érték (egyszerűsített polygonhoz)*/
 
             int lineStripID = 0; /*Az adott line strip ID-ja.*/
 
@@ -898,12 +924,16 @@ void filtered(const pcl::PointCloud<pcl::PointXYZ> &cloud)
                 point.x = markerPointsArray[i][0];
                 point.y = markerPointsArray[i][1];
                 point.z = markerPointsArray[i][2];
+                zavg *= i;
+                zavg += point.z;
+                zavg /= i+1;
 
                 /*Az első pont hozzáadása az adott line strip-hez.
                 Az első pontnál semmilyen feltétel nem kell.*/
                 if (i == 0)
                 {
                     line_strip.points.push_back(point);
+                    line += xy(point.x,point.y);
                 }
 
                 /*Ha a következő pont is ugyanabba a csoportba (piros vagy zöld) tartozik, mint az előző,
@@ -911,6 +941,7 @@ void filtered(const pcl::PointCloud<pcl::PointXYZ> &cloud)
                 else if (markerPointsArray[i][3] == markerPointsArray[i - 1][3])
                 {
                     line_strip.points.push_back(point);
+                    line += xy(point.x,point.y);
 
                     /*Ebben az "else if" feltételben fogjuk elérni az utolsó pontot, itt elkészül az utolsó line strip.*/
                     if (i == cM - 1)
@@ -945,8 +976,26 @@ void filtered(const pcl::PointCloud<pcl::PointXYZ> &cloud)
                             line_strip.color.g = 0.0;
                             line_strip.color.b = 0.0;
                         }
+                        
+                        if (polysimp_allow)
+                        {
+                            line_strip.points.clear();
+                            boost::geometry::clear(simplified);
+                            boost::geometry::simplify(line, simplified, polysimp);
+                            for(boost::geometry::model::linestring<xy>::const_iterator it = simplified.begin(); it != simplified.end(); it++)
+                            {
+                                geometry_msgs::Point p;
+                                p.x = boost::geometry::get<0>(*it);
+                                p.y = boost::geometry::get<1>(*it);
+                                p.z = polyz;
+
+                                line_strip.points.push_back(p);
+                            }
+                        }
+
                         ma.markers.push_back(line_strip); /*A line strip hozzáadása a marker array-hez.*/
                         line_strip.points.clear();        /*Az utolsó line strip-ből is töröljük a pontokat, feleslegesen ne tárolódjon.*/
+                        boost::geometry::clear(line);
                     }
                 }
 
@@ -955,6 +1004,7 @@ void filtered(const pcl::PointCloud<pcl::PointXYZ> &cloud)
                 else if (markerPointsArray[i][3] != markerPointsArray[i - 1][3] && markerPointsArray[i][3] == 0)
                 {
                     line_strip.points.push_back(point);
+                    line += xy(point.x,point.y);
 
                     /*A következő pontok már új line strip-hez fognak tartozni, szóval itt elkészül az egyik piros.*/
                     line_strip.id = lineStripID;
@@ -978,9 +1028,27 @@ void filtered(const pcl::PointCloud<pcl::PointXYZ> &cloud)
                     line_strip.color.g = 0.0;
                     line_strip.color.b = 0.0;
 
+                    if (polysimp_allow)
+                    {
+                        line_strip.points.clear();
+                        boost::geometry::clear(simplified);
+                        boost::geometry::simplify(line, simplified, polysimp);
+                        for(boost::geometry::model::linestring<xy>::const_iterator it = simplified.begin(); it != simplified.end(); it++)
+                        {
+                            geometry_msgs::Point p;
+                            p.x = boost::geometry::get<0>(*it);
+                            p.y = boost::geometry::get<1>(*it);
+                            p.z = polyz;
+
+                            line_strip.points.push_back(p);
+                        }
+                    }
+
                     ma.markers.push_back(line_strip);   /*A line strip hozzáadása a marker array-hez.*/
                     line_strip.points.clear();          /*A benne lévő pontok már nem kellenek.*/
+                    boost::geometry::clear(line);
                     line_strip.points.push_back(point); /*A következő zöld line strip-nél is szükség van erre a pontra, szóval hozzáadjuk.*/
+                    line += xy(point.x,point.y);
                 }
 
                 /*Csoportváltozás --> zöldről - pirosra.
@@ -1010,23 +1078,63 @@ void filtered(const pcl::PointCloud<pcl::PointXYZ> &cloud)
                     line_strip.color.g = 1.0;
                     line_strip.color.b = 0.0;
 
+                    if (polysimp_allow)
+                    {
+                        line_strip.points.clear();
+                        boost::geometry::clear(simplified);
+                        boost::geometry::simplify(line, simplified, polysimp);
+                        for(boost::geometry::model::linestring<xy>::const_iterator it = simplified.begin(); it != simplified.end(); it++)
+                        {
+                            geometry_msgs::Point p;
+                            p.x = boost::geometry::get<0>(*it);
+                            p.y = boost::geometry::get<1>(*it);
+                            p.z = polyz;
+
+                            line_strip.points.push_back(p);
+                        }
+                    }
+
                     ma.markers.push_back(line_strip); /*A line strip hozzáadása a marker array-hez.*/
                     line_strip.points.clear();        /*A benne lévő pontok már nem kellenek.*/
+                    boost::geometry::clear(line);
 
                     /*A követkető piros line srip-hez szükség van az előző pontra is.*/
                     point.x = markerPointsArray[i - 1][0];
                     point.y = markerPointsArray[i - 1][1];
                     point.z = markerPointsArray[i - 1][2];
                     line_strip.points.push_back(point);
+                    line += xy(point.x,point.y);
 
                     /*A követkető piros line srip-hez szükség van a jelenlegi pontra.*/
                     point.x = markerPointsArray[i][0];
                     point.y = markerPointsArray[i][1];
                     point.z = markerPointsArray[i][2];
                     line_strip.points.push_back(point);
+                    line += xy(point.x,point.y);
                 }
-                line_strip.lifetime = ros::Duration(0.05);
+                line_strip.lifetime = ros::Duration(0);
             }
+            if (zavg_allow)
+            {
+                for (int seg=0; seg < ma.markers.size(); seg++)
+                {
+                    for (int mz = 0; mz < ma.markers[seg].points.size(); mz++) /*Egyszerűsített polygon z-koordinátáinak megadása átlagból. */
+                    {
+                        ma.markers[seg].points[mz].z = zavg;
+                    }
+                }
+                /* polyz = zavg; /* Be- és kikapcsolással a konstans z-érték az átlagérték alapján beállítja magát. (kell?) */
+            }
+
+            /*érvényét vesztett markerek eltávolítása*/
+            line_strip.action = visualization_msgs::Marker::DELETE;
+            for (int del = lineStripID; del<ghostcount; del++)
+            {
+                line_strip.id++;
+                ma.markers.push_back(line_strip);
+            }
+            ghostcount = lineStripID;
+
             /*A marker array hírdetése.*/
             pub_marker.publish(ma);
         }
