@@ -1,8 +1,10 @@
 <launch>
     <node name="rqt_conf_gui" pkg="rqt_reconfigure" type="rqt_reconfigure" output="screen"/>
     <node name="rviz_config" pkg="rviz" type="rviz"  args="-d $(find urban_road_filter)/config/demo1.rviz" output="screen"/>
-    <node name="urban_road_filt" pkg="urban_road_filter" type="lidar_road" output="screen">
-        <param name="topic_name" value="/left_os1/os1_cloud_node/points"/>
-        <param name="fixed_frame" value="left_os1/os1_lidar"/>
-    </node>
+    <group ns="urban_road_filter">
+        <node name="urban_road_filt" pkg="urban_road_filter" type="lidar_road" output="screen">
+            <param name="topic_name" value="/left_os1/os1_cloud_node/points"/>
+            <param name="fixed_frame" value="left_os1/os1_lidar"/>
+        </node>
+    </group>
 </launch>

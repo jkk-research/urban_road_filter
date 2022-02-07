@@ -1170,7 +1170,7 @@ int main(int argc, char **argv)
 {
 
     /*Az ROS inicializálása.*/
-    ros::init(argc, argv, "lidarSegmentation");
+    ros::init(argc, argv, "urban_road_filt");
     ROS_INFO("Initializing %s", ros::this_node::getName().c_str());
 
     /*A GUI felülethez szükséges sorok.*/
@@ -1186,11 +1186,11 @@ int main(int argc, char **argv)
     ros::Subscriber sub = nh.subscribe(topicName, 1, filtered);
 
     /*A szűrt adatok hírdetése.*/
-    pub_road = nh.advertise<pcl::PCLPointCloud2>("cloud_filtered_Road", 1);
-    pub_high = nh.advertise<pcl::PCLPointCloud2>("cloud_filtered_High", 1);
-    pub_box = nh.advertise<pcl::PCLPointCloud2>("cloud_filtered_Box", 1);
-    pub_pobroad = nh.advertise<pcl::PCLPointCloud2>("cloud_filtered_ProbablyRoad", 1);
-    pub_marker = nh.advertise<visualization_msgs::MarkerArray>("visualization_MarkerArray", 1);
+    pub_road = nh.advertise<pcl::PCLPointCloud2>("road", 1);
+    pub_high = nh.advertise<pcl::PCLPointCloud2>("curb", 1);
+    pub_box = nh.advertise<pcl::PCLPointCloud2>("roi", 1); // ROI - region of interest
+    pub_pobroad = nh.advertise<pcl::PCLPointCloud2>("road_probably", 1);
+    pub_marker = nh.advertise<visualization_msgs::MarkerArray>("road_marker", 1);
 
     /*Csaplár László kódjához szükséges.*/
     beam_init();

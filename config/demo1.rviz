@@ -208,7 +208,7 @@ Visualization Manager:
       Size (Pixels): 3
       Size (m): 0.11999999731779099
       Style: Flat Squares
-      Topic: /cloud_filtered_Road
+      Topic: /urban_road_filter/road
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: false
@@ -238,14 +238,14 @@ Visualization Manager:
       Size (Pixels): 3
       Size (m): 0.2199999988079071
       Style: Flat Squares
-      Topic: /cloud_filtered_High
+      Topic: /urban_road_filter/curb
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: false
       Value: true
     - Class: rviz/MarkerArray
       Enabled: false
-      Marker Topic: /visualization_MarkerArray
+      Marker Topic: /urban_road_filter/road_marker
       Name: road marker
       Namespaces:
         {}
