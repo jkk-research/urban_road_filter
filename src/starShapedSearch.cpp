@@ -1,68 +1,74 @@
-/*Csaplár László --- starShapedSearch*/
+/*  starShapedSearch algorithm
+    (by László Csaplár)
 
-int rep = 360;     //detektáló nyalábok száma (illetve szöghelyzet alapján hány részre/szeletre bontsa fel a pontfelhőt -> szeletenként 1 nyaláb)
-float width = 0.2; //nyalábok szélessége
-float rmin = 2.0;  //szűrés minimális sugara (csak ennél távolabbi pontok)
-float rmax = 60.0; //szűrés maximális sugara (csak ennél közelebbi pontok)
-float Kfi;         //belső paraméter, ez felel a pontok szöghelyzet szerinti besorolásáért ( = 1/ [2pi/rep] = 1/ [szomszédos nyalábok közti szög] )
-float slope_param; //éldetektáláshoz használt "meredekség" paraméter (2 pont alkotta meredekség, sugár irányban)
-int dmin_param;
-float kdev_param;
-float kdist_param;
-std::vector<int> padkaIDs(rep); //padkának vélt pontok eredeti azonosítója (a bemeneti pontfelhőből)
+    description: a complementary algorithm for roadside detection, part of the "urban_road_filter" package
+    input:  const pcl::PointCloud<pcl::PointXYZ> [see: void callback(...)]
+    output: (non-return) std::vector<int> padkaIDs - list of IDs of the points (one per beam) detected as roadside
+*/
 
-struct polar //polárkoodináta-adatszerkezet 3D pontoknak
+int rep = 360;                  //number of detection beams (how many parts/sectors will the pointcloud be divided along the angular direction -> one beam per sector)
+float width = 0.2;              //width of beams
+float rmin = 2.0;               //minimum radius of filter (keep points only farther than this)
+float rmax = 60.0;              //maximum radius of filter (keep points only nearer than this)
+float Kfi;                      //internal parameter, for assigning the points to their corresponding sectors ( = 1 / [2pi/rep] = 1 / [angle between neighboring beams] )
+float slope_param;              //"slope" parameter for edge detection (given by 2 points, in radial direction/plane)
+int dmin_param;                 //(see below)
+float kdev_param;               //(see below)
+float kdist_param;              //(see below)
+std::vector<int> padkaIDs(rep); //original ID of points marked as roadside (from input cloud)
+
+struct polar    //polar-coordinate struct for the points
 {
-    int id;   //pont eredeti azonosító száma (a megadott/bemeneti pontfelhő szerint)
-    float r;  //radiális (sugár-) irányú koordináta
-    float fi; //szögtávolság-koordináta (x-tengellyel bezárt szög)
+    int id;     //original ID of point (from input cloud)
+    float r;    //radial coordinate
+    float fi;   //angular coordinate (ccw angle from x-axis)
 };
 
-struct box //nyaláb adatszerkezete
+struct box      //struct for detection beams
 {
-    std::vector<polar> p; //nyaláb területére eső pontok
-    box *l, *r;           //pointer a szomszédos nyalábokra (jelenleg nem használt)
-    bool yx;              //szöghelyzet alapján inkább y-irányba áll-e az adott nyaláb (mint x-irányba)
-    float o, d;           //belső paraméterek (trigonometria)
+    std::vector<polar> p; //points within the beam's area
+    box *l, *r;           //pointer to adjacent beams (currently not used)
+    bool yx;              //whether it is aligned more with the y-axis (than the x-axis)
+    float o, d;           //internal parameters (trigonometry)
 };
 
-std::vector<box> beams(rep);       //nyalábok
-std::vector<box *> beamp(rep + 1); //pointerek a nyalábokra (+1 -> 0 ÉS 360)
+std::vector<box> beams(rep);        //beams
+std::vector<box *> beamp(rep + 1);  //pointers to the beams (+1 -> 0 AND 360)
 
-bool ptcmpr(polar a, polar b) //r-koordináta alapú összehasonlítás
+bool ptcmpr(polar a, polar b)   //comparison by r-coordinates
 {
     return (a.r < b.r);
 }
 
-float slope(float x0, float y0, float x1, float y1) //meredekség meghatározása két x és y koordináta alapján
+float slope(float x0, float y0, float x1, float y1) //get slope between 2 points given by x and y coordinates
 {
     return (y1 - y0) / (x1 - x0);
 }
 
-void beam_init() //nyaláb-inicializálás
+void beam_init()    //beam initialization
 {
     {
-        float fi, off = 0.5 * width;  //ideiglenes változók
-        for (int i = 0; i < rep; i++) //minden nyalábra...
+        float fi, off = 0.5 * width;    //temporary variables
+        for (int i = 0; i < rep; i++)   //for every beam...
         {
-            fi = i * 2 * M_PI / rep; //nyaláb szöghelyzete
-            if (abs(tan(fi)) > 1)    //annak "meredeksége" ( x <---> y )
+            fi = i * 2 * M_PI / rep;    //angle of beam
+            if (abs(tan(fi)) > 1)       //"slope" of beam ( x <---> y )
             {
-                beams[i].yx = true;                //inkább y-irányba áll
-                beams[i].d = tan(0.5 * M_PI - fi); // = 1/tan(fi) [szorzótényező]
-                beams[i].o = off / sin(fi);        //nyaláb félszélességének x-irányú vetülete (a nyaláb középvonalától milyen messze kell menni x-irányba, hogy elérjük a nyaláb szélét)
+                beams[i].yx = true;                 //aligning more with y-direction
+                beams[i].d = tan(0.5 * M_PI - fi);  // = 1/tan(fi) [coefficient]
+                beams[i].o = off / sin(fi);         //projection of half beam-width in the x-direction (how far from its centerline is the edge of the beam in the x-dir)
             }
             else
             {
-                beams[i].yx = false;        //inkább x-irányba áll
-                beams[i].d = tan(fi);       //szorzótényező
-                beams[i].o = off / cos(fi); //nyaláb félszélességének y-irányú vetülete
+                beams[i].yx = false;        //aligning more with x-direction
+                beams[i].d = tan(fi);       //coefficient
+                beams[i].o = off / cos(fi); //y-axis projection of half beam-width
             }
-            beamp[i] = &beams[i]; //pointerek beállítása
+            beamp[i] = &beams[i];   //initializing the pointers
         }
     }
 
-    for (int i = 0, j = 1; j < rep; i++, j++) //szomszédos elemekre mutató pointerek beállítása
+    for (int i = 0, j = 1; j < rep; i++, j++)   //initializing the pointers to adjacent beams
     {
         beams[i].l = &beams[j];
         beams[j].r = &beams[i];
@@ -70,31 +76,31 @@ void beam_init() //nyaláb-inicializálás
     beams[0].r = &beams[rep];
     beams[rep].l = &beams[0];
 
-    Kfi = rep / (2 * M_PI); //azért reciprok, mert ha 2pi/rep lenne, akkor a továbbiakban pontonként osztani kéne vele, szorzással elvileg gyorsabb
+    Kfi = rep / (2 * M_PI); //should be 2pi/rep, but then we would have to divide by it every time - using division only once and then multiplying later on should be somewhat faster (?)
 }
 
-void threadfunc(const int tid, const pcl::PointCloud<pcl::PointXYZ> *cloud) //nyaláb-algoritmus (szűrés, rendezés, élkeresés/padka-detektálás) - bemenet: nyaláb ID (szöghelyzet alapján hányadik), pontfelhő
+void threadfunc(const int tid, const pcl::PointCloud<pcl::PointXYZ> *cloud) //beam algorithm (filtering, sorting, edge-/roadside detection) - input: beam ID (ordinal position/"which one" by angle), pointcloud
 {
-    int i = 0, s = beams[tid].p.size(); //ciklusváltozók
-    float c;                            //segédváltozó
+    int i = 0, s = beams[tid].p.size(); //loop variables
+    float c;                            //temporary variable to simplify things
 
-    if (beams[tid].yx) //a nyaláb tényleges területén kívül eső pontok kiszűrése... (1/2 eset, y-irány)
+    if (beams[tid].yx)  //filtering the points lying outside the area of the beam... (case 1/2, y-direction)
     {
-        while (i < s) // (for ciklus helyett, mert s változik, i-t pedig nem mindig kell inkrementálni)
+        while (i < s)   //iterating through points in the current sector (instead of a for loop - since 's' is not constant and 'i' needs to be incremented conditionally)
         {
-            c = abs(beams[tid].d * cloud->points[beams[tid].p[i].id].y);                       //nyaláb középvonalának x-koordinátája a pontnál (a pont y-kordinátájának "magasságában")
-            if ((c - beams[tid].o) < cloud->points[beams[tid].p[i].id].x < (c + beams[tid].o)) //nyalábba esik-e (a pont y-koordinátájának vonalán a pont [x-koordinátája] a nyaláb két széle között van-e)
+            c = abs(beams[tid].d * cloud->points[beams[tid].p[i].id].y);                        //x-coordinate of the beam's centerline at the point (at the "height" of its y-coordinate)
+            if ((c - beams[tid].o) < cloud->points[beams[tid].p[i].id].x < (c + beams[tid].o))  //whether it is inside the beam (by checking only x values on the line/"height" of the point's y-coordinate: whether the [x-coordinate of the] point falls between the [x-coordinates of the] two sides/borders of the beam
             {
-                i++; //"ok, következő!"
+                i++;    //okay, next one
             }
-            else //ha kívül esik
+            else    //if outside the area
             {
-                beams[tid].p.erase(beams[tid].p.begin() + i); //pont eltávolítása
-                s--;                                          //a törlés miatt csökkent az elemek száma (aminek a helyére így a következő pont jön, ezért i-t nem kell állítani)
+                beams[tid].p.erase(beams[tid].p.begin() + i);   //remove point
+                s--;                                            //the size has shrunk because of the deletion of a point (and its place is taken by the next point, so 'i' does not need to be changed)
             }
         }
     }
-    else //ugyanaz, csak x és y megcserélve (2/2 eset, x-irány)
+    else    //same but with x and y swapped (case 2/2, x-direction)
     {
         while (i < s)
         {
@@ -111,22 +117,22 @@ void threadfunc(const int tid, const pcl::PointCloud<pcl::PointXYZ> *cloud) //ny
         }
     }
 
-    std::sort(beams[tid].p.begin(), beams[tid].p.end(), ptcmpr); //pontok rendezése r-koordináta (sugár) alapján
+    std::sort(beams[tid].p.begin(), beams[tid].p.end(), ptcmpr);    //sorting points by r-coordinate (radius)
 
-    {              //élkeresés (padka éle)
-        if (s > 1) //2 pontnál kevesebbel kissé problémás lenne
+    {               //edge detection (edge of the roadside)
+        if (s > 1)  //for less than 2 points it would be pointless
         {
-            int dmin = dmin_param;     //szükséges minimális elemszám
-            float kdev = kdev_param;   //szorzótényező: súlyozás az átlag és eltérés összehasonlításánál
-            float kdist = kdist_param; //szorzótényező: súlyozás a pontok közötti távolsággal
+            int dmin = dmin_param;      //minimal number of points required to begin adaptive evaluation
+            float kdev = kdev_param;    //coefficient: weighting the impact of deviation (difference) from average ( = overall sensitivity to changes)
+            float kdist = kdist_param;  //coefficient: weighting the impact of the distance between points ( = sensitivity for height error at close points)
 
-            float avg = 0, dev = 0, nan = 0;          //meredekség átlaga és szórása adaptív kiértékeléshez + nem-szám (Not-a-Number) értékek kezelése
-            float ax, ay, bx, by, slp;                //segédváltozók (a és b pont + meredekség)
-            bx = beams[tid].p[0].r;                   // x = első pont r-koordinátája (radiális helyzet)
-            by = cloud->points[beams[tid].p[0].id].z; // y = első pont z-koordinátája (magasság)
+            float avg = 0, dev = 0, nan = 0;            //average value and absolute average deviation of the slope for adaptive detection + handling Not-a-Number values
+            float ax, ay, bx, by, slp;                  //temporary variables (points 'a' and 'b' + slope)
+            bx = beams[tid].p[0].r;                     //x = r-coordinate of the first point (radial position)
+            by = cloud->points[beams[tid].p[0].id].z;   //y = z-coordinate of the first point (height)
 
-            for (int i = 1; i < s; i++) //élkeresés a és b pont közti meredekség alapján
-            {                           //pontok frissítése (a=b, b=következő)
+            for (int i = 1; i < s; i++) //edge detection based on the slope between point a and b
+            {                           //updating points (a=b, b=next)
                 ax = bx;
                 bx = beams[tid].p[i].r;
                 ay = by;
@@ -134,53 +140,53 @@ void threadfunc(const int tid, const pcl::PointCloud<pcl::PointXYZ> *cloud) //ny
                 slp = slope(ax, ay, bx, by);
 
                 if (isnan(slp))
-                    nan++; //nem-szám korrekció
-                else       //átlag és szórás-átlag számítása (frissítése)
+                    nan++;  //Not-a-Number correction
+                else        //calculating (updating) average and deviation
                 {
-                    avg *= i - nan - 1;    //átlag "kicsomagolása" (+ nem-szám korrekció)
-                    avg += slp;            //új elem hozzáadása
-                    avg *= 1 / (i - nan);  //összegből visszaalakítás átlagba
-                    dev *= i - nan - 1;    //szórás-átlagból összeg
-                    dev += abs(slp - avg); //új elem (abszolút eltérés az átlagtól) hozzáadása
-                    dev *= 1 / (i - nan);  //összegből visszaalakítás szórás-átlagba
+                    avg *= i - nan - 1;     //"unpacking" average value (average -> sum, + NaN correction)
+                    avg += slp;             //insertion of new element
+                    avg *= 1 / (i - nan);   //sum -> average
+                    dev *= i - nan - 1;     //Absolute Average Deviation -> sum ("unpacking")
+                    dev += abs(slp - avg);  //insertion of new element (absolute difference from average)
+                    dev *= 1 / (i - nan);   //sum -> AAD
                 }
-                if (slp > slope_param ||                                                     //meredekség vizsgálata + adaptív módszer:
-                    (i > dmin && (slp * slp - avg * avg) * kdev * ((bx - ax) * kdist) > dev) //elégséges elemszám esetén az átlagtól való eltérés négyzete (konstans-súlyozva)...
-                    )                                                                        //...a szomszédos pontok távolságától függően (zajszűrés) meghaladja-e a szórás átlagát
+                if  ( slp > slope_param ||                                                          //evaluation of the slope -> using a constant + adaptive:
+                        (i > dmin && (slp * slp - avg * avg) * kdev * ((bx - ax) * kdist) > dev)    //if sufficient number of points: does the (weighted) "squared difference" from average - corrected with... 
+                    )                                                                               //... the (weighted) distance of adjacent points - exceed the average absolute deviation?
                 {
-                    padkaIDs.push_back(beams[tid].p[i].id); //a pont eredeti azonosítója bejegyzésre kerül, mint padkapont
-                    break;                                  // (a padka már megvan, a ciklusból ki lehet lépni)
+                    padkaIDs.push_back(beams[tid].p[i].id); //original ID of point gets registered as roadside
+                    break;                                  //(the roadside is found, time to break the loop)
                 }
             }
         }
     }
-    beams[tid].p.clear(); //a kiértékelés megtörtént, a vizsgált pontokra itt már nincs szükség
+    beams[tid].p.clear();   //evaluation done, the points are no longer needed
 }
 
-void callback(const pcl::PointCloud<pcl::PointXYZ> &cloud) //entry point a kódhoz, ezen keresztül kerül meghívásra minden (kivéve az inicializálást, azt indításnál kell - "beam_init()")
+void callback(const pcl::PointCloud<pcl::PointXYZ> &cloud)  //entry point to the code, everything gets called here (except for initialization - that needs to be called separately, at the start of the program - "beam_init()")
 {
-    beamp.push_back(&beams[0]); //"360 fok = 0 fok" pointer beállítása
-    int f, s = cloud.size();    //segédváltozók
-    float r, fi;                //polárkoordináták
+    beamp.push_back(&beams[0]); //initializing "360 deg = 0 deg" pointer
+    int f, s = cloud.size();    //temporary variables
+    float r, fi;                //polar coordinates
 
-    for (int i = 0; i < s; i++) //pontok átszámítása polárkoordináta-rendszerbe + szétosztás a nyalábok között
+    for (int i = 0; i < s; i++) //points to polar coordinate-system + sorting into sectors
     {
-        r = sqrt(cloud.points[i].x * cloud.points[i].x + cloud.points[i].y * cloud.points[i].y); //r = gyök(x^2+y^2) = pont távolsága a szenzortól
+        r = sqrt(cloud.points[i].x * cloud.points[i].x + cloud.points[i].y * cloud.points[i].y);    //r = sqRoot(x^2+y^2) = distance of point from sensor
 
-        fi = atan2(cloud.points[i].y, cloud.points[i].x); //pont szöghelyzete
+        fi = atan2(cloud.points[i].y, cloud.points[i].x);   //angular position of point
 
         if (fi < 0)
-            fi += 2 * M_PI; //negatív értékek kezelése (-180...+180 -> 0...360)
+            fi += 2 * M_PI;     //handling negative values (-180...+180 -> 0...360)
 
-        f = (int)(fi * Kfi); //hányadik nyalábba (nyalábot tartalmazó szeletbe) esik bele
+        f = (int)(fi * Kfi);    //which one of the beams (sectors, containing the beam) does it fall into
 
-        beamp[f]->p.push_back(polar{i, r, fi}); //pont hozzáadása az f-edik nyalábhoz (még bármiféle szűrés nélkül)
+        beamp[f]->p.push_back(polar{i, r, fi}); //adding the point to the 'f'-th beam (still unfiltered)
     }
-    beamp.pop_back(); //pointer eltávolítása "double free error" megelőzése végett
-    padkaIDs.clear(); //előző adatok törlése
+    beamp.pop_back();   //removing pointer (to prevent "double free" error)
+    padkaIDs.clear();   //clearing previous data
 
-    for (int i = 0; i < rep; i++) //nyalábonként...
+    for (int i = 0; i < rep; i++)   //for every beam...
     {
-        threadfunc(i, &cloud); //a lényeg (nyaláb-algoritmus)
+        threadfunc(i, &cloud);  //the heart of the code (beam algorithm)
     }
 }
