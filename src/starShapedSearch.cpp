@@ -2,7 +2,7 @@
     (by László Csaplár)
 
     description: a complementary algorithm for roadside detection, part of the "urban_road_filter" package
-    input:  const pcl::PointCloud<pcl::PointXYZ> [see: void callback(...)]
+    input:  const pcl::PointCloud<pcl::PointXYZI> [see: void callback(...)]
     output: (non-return) std::vector<int> padkaIDs - list of IDs of the points (one per beam) detected as roadside
 */
 
@@ -79,7 +79,7 @@ void beam_init()    //beam initialization
     Kfi = rep / (2 * M_PI); //should be 2pi/rep, but then we would have to divide by it every time - using division only once and then multiplying later on should be somewhat faster (?)
 }
 
-void threadfunc(const int tid, const pcl::PointCloud<pcl::PointXYZ> *cloud) //beam algorithm (filtering, sorting, edge-/roadside detection) - input: beam ID (ordinal position/"which one" by angle), pointcloud
+void threadfunc(const int tid, const pcl::PointCloud<pcl::PointXYZI> *cloud) //beam algorithm (filtering, sorting, edge-/roadside detection) - input: beam ID (ordinal position/"which one" by angle), pointcloud
 {
     int i = 0, s = beams[tid].p.size(); //loop variables
     float c;                            //temporary variable to simplify things
@@ -163,7 +163,7 @@ void threadfunc(const int tid, const pcl::PointCloud<pcl::PointXYZ> *cloud) //be
     beams[tid].p.clear();   //evaluation done, the points are no longer needed
 }
 
-void callback(const pcl::PointCloud<pcl::PointXYZ> &cloud)  //entry point to the code, everything gets called here (except for initialization - that needs to be called separately, at the start of the program - "beam_init()")
+void callback(const pcl::PointCloud<pcl::PointXYZI> &cloud)  //entry point to the code, everything gets called here (except for initialization - that needs to be called separately, at the start of the program - "beam_init()")
 {
     beamp.push_back(&beams[0]); //initializing "360 deg = 0 deg" pointer
     int f, s = cloud.size();    //temporary variables
