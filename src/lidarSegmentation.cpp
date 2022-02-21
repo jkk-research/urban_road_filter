@@ -38,7 +38,6 @@ typedef boost::geometry::model::d2::point_xy<float> xy;
 boost::geometry::model::linestring<xy> line;
 boost::geometry::model::linestring<xy> simplified;
 
-
 /*Global variables.*/
 int channels = 64;                                    /* The number of channels of the LIDAR .*/
 std::string fixedFrame;                               /* Fixed Frame.*/
@@ -62,13 +61,9 @@ float polyz = -1.5;                                   /*manuálisan megadott z-k
 
 int ghostcount = 0;                                   /* segédváltozó az elavult markerek (ghost) eltávolításához */
 
-int cols = 8;                                           /* number of columns in the 3D array */
-int cols2d = 7;                                         /* number of columns in the 2D array */
-
 
 /*A paraméterek beállítása.*/
-void paramsCallback(lidar_filters_pkg::LidarFiltersConfig &config, uint32_t level)
-{
+void paramsCallback(lidar_filters_pkg::LidarFiltersConfig &config, uint32_t level){
     fixedFrame = config.fixed_frame;
     topicName = config.topic_name;
     x_zero_method = config.x_zero_method;
@@ -99,94 +94,103 @@ void paramsCallback(lidar_filters_pkg::LidarFiltersConfig &config, uint32_t leve
     ROS_INFO("Updated params %s", ros::this_node::getName().c_str());
 }
 
-/*Publish.*/
-ros::Publisher pub_road;        /*Szűrt pontok (járható úttest).*/
-ros::Publisher pub_high;        /*Szűrt pontok (nem járható úttest).*/
-ros::Publisher pub_box;         /*Szűrt pontok (nem úttest).*/
-ros::Publisher pub_pobroad;     /*A vizsgált terület, összes pontja.*/
-ros::Publisher pub_marker;      /*Marker.*/
+struct Point2D{
+    pcl::PointXYZI p;
+    float d;
+    float alpha;
+    short isCurbPoint;
+};
+struct Point3D:public Point2D{
+    float newY;
+};
 
-/*FÜGGVÉNYEK*/
-/*Rekurziv, gyors rendező függvény. (1/3)*/
-void swap(float *a, float *b)
-{
-    float t = *a;
-    *a = *b;
-    *b = t;
-}
+class Detector{
+    public:
 
-/*Rekurziv, gyors rendező függvény. (2/3)*/
-int partition(float *array3D, int arc, int piece, int low, int high)
-{
-    float pivot = *(array3D + arc * piece * cols + high * cols + 4);
-    int i = (low - 1);
-    for (int j = low; j <= high - 1; j++)
+    Detector(ros::NodeHandle* nh){
+        /*Feliratkozás az adott topicra.*/
+        sub = nh->subscribe(topicName, 1, &Detector::filtered,this);
+        /*A szűrt adatok hírdetése.*/
+        pub_road = nh->advertise<pcl::PCLPointCloud2>("road", 1);
+        pub_high = nh->advertise<pcl::PCLPointCloud2>("curb", 1);
+        pub_box = nh->advertise<pcl::PCLPointCloud2>("roi", 1); // ROI - region of interest
+        pub_pobroad = nh->advertise<pcl::PCLPointCloud2>("road_probably", 1);
+        pub_marker = nh->advertise<visualization_msgs::MarkerArray>("road_marker", 1);
+
+        /*Csaplár László kódjához szükséges.*/
+        beam_init();
+
+        ROS_INFO("Ready");
+
+    }
+    /*FÜGGVÉNYEK*/
+
+    /*Rekurziv, gyors rendező függvény. (1/2)*/
+    int partition(std::vector<std::vector<Point3D>>& array3D, int arc,int low, int high)
     {
-        if (*(array3D + arc * piece * cols + j * cols + 4) < pivot)
-        {
-            i++;
-            for(int sw = 0; sw < cols; sw++){
-                swap(&*(array3D + arc * piece * cols + i * cols + sw), &*(array3D + arc * piece * cols + j * cols + sw));
+        float pivot = array3D[arc][high].alpha;
+        int i = (low - 1);
+        for (int j = low; j <= high - 1; j++){
+            if (array3D[arc][j].alpha < pivot){
+                i++;
+                std::swap(array3D[arc][i],array3D[arc][j]);
             }
         }
+        std::swap(array3D[arc][i+1],array3D[arc][high]);
+        return (i + 1);
     }
-    for(int sw = 0; sw < cols; sw++){
-        swap(&*(array3D + arc * piece * cols + (i + 1) * cols + sw), &*(array3D + arc * piece * cols + high * cols + sw));
-    }
-    return (i + 1);
-}
 
-/*Rekurziv, gyors rendező függvény. (3/3)*/
-void quickSort(float *array3D, int arc, int piece, int low, int high)
-{
-    if (low < high)
+    /*Rekurziv, gyors rendező függvény. (2/2)*/
+    void quickSort(std::vector<std::vector<Point3D>>& array3D, int arc, int low, int high)
     {
-        int pi = partition(array3D, arc, piece, low, high);
-        quickSort(array3D, arc, piece, low, pi - 1);
-        quickSort(array3D, arc, piece, pi + 1, high);
-    }
-}
-
-/*Ez a függvény végzi a szűrést.*/
-void filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud)
-{
-    /*Segédváltozók, a "for" ciklusokhoz.*/
-    int i, j, k, l;
-
-    pcl::PointXYZI pt;                                           /*Egy db pont tárolásához szükséges.*/
-    pcl::PointCloud<pcl::PointXYZI> cloud_filtered_Road;         /*Szűrt pontok (járható úttest).*/
-    pcl::PointCloud<pcl::PointXYZI> cloud_filtered_ProbablyRoad; /*Szűrt pontok (nem járható úttest).*/
-    pcl::PointCloud<pcl::PointXYZI> cloud_filtered_High;         /*Szűrt pontok (nem úttest).*/
-    pcl::PointCloud<pcl::PointXYZI> cloud_filtered_Box;          /*A vizsgált terület, összes pontja.*/
-
-    /*A "cloud_filtered_Box" topic feltöltése a pontokkal.
-    Végigmegyünk az input felhőn, és azokat a pontokat, melyek megfelelnek a feltételeknek,
-    hozzáadjuk a "cloud_filtered_Box" topichoz.*/
-    for (i = 0; i <= cloud.size(); i++)
-    {
-        if (cloud.points[i].x >= min_X && cloud.points[i].x <= max_X &&
-            cloud.points[i].y >= min_Y && cloud.points[i].y <= max_Y &&
-            cloud.points[i].z >= min_Z && cloud.points[i].z <= max_Z &&
-            cloud.points[i].x + cloud.points[i].y + cloud.points[i].z != 0)
+        if (low < high)
         {
-            pt.x = cloud.points[i].x;
-            pt.y = cloud.points[i].y;
-            pt.z = cloud.points[i].z;
-            pt.intensity = cloud.points[i].intensity;
-            cloud_filtered_Box.push_back(pt);
+            int pi = partition(array3D, arc, low, high);
+            quickSort(array3D, arc, low, pi - 1);
+            quickSort(array3D, arc, pi + 1, high);
         }
     }
 
-    /*A pontok darabszáma, a vizsgált területen.*/
-    int piece = cloud_filtered_Box.points.size();
-
-    /*Minimum 30 pont legyen a vizsgált területen, különben programhibák lesznek.
-    Illetve nincs is értelme vizsgálni ilyen kevés pontot.*/
-    if (piece >= 30)
+    /*Ez a függvény végzi a szűrést.*/
+    void filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud)
     {
+        /*Segédváltozók, a "for" ciklusokhoz.*/
+        int i, j, k, l;
+
+        pcl::PointXYZI pt;                                           /*Egy db pont tárolásához szükséges.*/
+        pcl::PointCloud<pcl::PointXYZI> cloud_filtered_Road;         /*Szűrt pontok (járható úttest).*/
+        pcl::PointCloud<pcl::PointXYZI> cloud_filtered_ProbablyRoad; /*Szűrt pontok (nem járható úttest).*/
+        pcl::PointCloud<pcl::PointXYZI> cloud_filtered_High;         /*Szűrt pontok (nem úttest).*/
+        pcl::PointCloud<pcl::PointXYZI> cloud_filtered_Box;          /*A vizsgált terület, összes pontja.*/
+
+        /*A "cloud_filtered_Box" topic feltöltése a pontokkal.
+        Végigmegyünk az input felhőn, és azokat a pontokat, melyek megfelelnek a feltételeknek,
+        hozzáadjuk a "cloud_filtered_Box" topichoz.*/
+        for(auto point:cloud.points){
+            if (point.x >= min_X && point.x <= max_X &&
+                point.y >= min_Y && point.y <= max_Y &&
+                point.z >= min_Z && point.z <= max_Z &&
+                point.x + point.y + point.z != 0){
+                
+                pt.x = point.x;
+                pt.y = point.y;
+                pt.z = point.z;
+                pt.intensity = point.intensity;
+                //pt=point;
+                cloud_filtered_Box.push_back(pt);
+            }
+        }
+
+        /*A pontok darabszáma, a vizsgált területen.*/
+        int piece = cloud_filtered_Box.points.size();
+
+        /*Minimum 30 pont legyen a vizsgált területen, különben programhibák lesznek.
+        Illetve nincs is értelme vizsgálni ilyen kevés pontot.*/
+        if (piece < 30){
+            return;
+        }
         /*Csaplár László kódjának meghívása és a szükséges határérték beállítása.*/
-        if (star_shaped_method )
-        {
+        if (star_shaped_method ){
             slope_param = angleFilter3 * (M_PI / 180);
             callback(cloud_filtered_Box);
         }
@@ -199,7 +203,7 @@ void filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud)
         - Csaplár László kódja alapján felismert szegély pontok: Csoportszámok (5: Road = 1, High = 2).
         - intenzitás-értékek (6: intensity)
         */
-        float *array2D = new float[piece * cols2d]();
+        std::vector<Point2D> array2D(piece);
 
         /*A szögfüggvények, zárójelbeli értékeinek tárolásához.*/
         float bracket;
@@ -216,17 +220,17 @@ void filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud)
         int newCircle;
 
         /*A 2D tömb feltöltése.*/
-        for (i = 0; i < piece; i++)
-        {
+        for (i = 0; i < piece; i++){
             /*--- Az első 4 oszlop feltöltése. ---*/
-            *(array2D + i * cols2d + 0) = cloud_filtered_Box.points[i].x;
-            *(array2D + i * cols2d + 1) = cloud_filtered_Box.points[i].y;
-            *(array2D + i * cols2d + 2) = cloud_filtered_Box.points[i].z;
-            *(array2D + i * cols2d + 3) = sqrt(pow(*(array2D + i * cols2d + 0), 2) + pow(*(array2D + i * cols2d + 1), 2) + pow(*(array2D + i * cols2d + 2), 2));
-            *(array2D + i * cols2d + 6) = cloud_filtered_Box.points[i].intensity;
+            array2D[i].p.x = cloud_filtered_Box.points[i].x;
+            array2D[i].p.y = cloud_filtered_Box.points[i].y;
+            array2D[i].p.z = cloud_filtered_Box.points[i].z;
+            array2D[i].d = sqrt(pow(array2D[i].p.x, 2) + pow(array2D[i].p.y, 2) + pow(array2D[i].p.z, 2));
+            array2D[i].p.intensity = cloud_filtered_Box.points[i].intensity;
+            //array2D[i].p=cloud_filtered_Box.points[i];
 
             /*--- Az 5. oszlop feltöltése. ---*/
-            bracket = abs(*(array2D + i * cols2d + 2)) / *(array2D + i * cols2d + 3);
+            bracket = abs(array2D[i].p.z) / array2D[i].d;
 
             /*A kerekítési hibák miatt szükséges sorok.*/
             if (bracket < -1)
@@ -235,13 +239,12 @@ void filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud)
                 bracket = 1;
 
             /*Számolás és konvertálás fokba.*/
-            if (*(array2D + i * cols2d + 2) < 0)
+            if (array2D[i].p.z < 0)
             {
-                *(array2D + i * cols2d + 4) = acos(bracket) * 180 / M_PI;
+                array2D[i].alpha = acos(bracket) * 180 / M_PI;
             }
-            else if (*(array2D + i * cols2d + 2) >= 0)
-            {
-                *(array2D + i * cols2d + 4) = (asin(bracket) * 180 / M_PI) + 90;
+            else{
+                array2D[i].alpha = (asin(bracket) * 180 / M_PI) + 90;
             }
 
             /*A megfelelő index beállítása.*/
@@ -255,7 +258,7 @@ void filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud)
                 if (angle[j] == 0)
                     break;
 
-                if (abs(angle[j] - *(array2D + i * cols2d + 4)) <= interval)
+                if (abs(angle[j] - array2D[i].alpha) <= interval)
                 {
                     newCircle = 0;
                     break;
@@ -269,19 +272,16 @@ void filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud)
                 Ha valamilyen okból, több körív keletkezne mint 64, hiba lépne fel.*/
                 if (index < channels)
                 {
-                    angle[index] = *(array2D + i * cols2d + 4);
+                    angle[index] = array2D[i].alpha;
                     index++;
                 }
             }
         }
-
         /*--- A 6. oszlop feltöltése. ---*/
         /*Csaplár László kódja által, magaspontoknak jelölt pontok felvétele a 2D tömbbe.*/
-        if (star_shaped_method )
-        {
-            for (i = 0; i < padkaIDs.size(); i++)
-            {
-                *(array2D + padkaIDs[i] * cols2d + 5) = 2;
+        if (star_shaped_method ){
+            for (i = 0; i < padkaIDs.size(); i++){
+                array2D[padkaIDs[i]].isCurbPoint = 2;
             }
         }
 
@@ -297,7 +297,7 @@ void filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud)
         - X = 0 érték mellett, az új Y koordináták (5: új Y),
         - Csoportszámok (6: Road = 1, High = 2).
         */
-        float *array3D = new float[channels * piece * cols]();
+        std::vector<std::vector<Point3D>> array3D(channels,std::vector<Point3D>(piece));
 
         /*Az adott köríveket tartalmazó csoportok (azaz a "channels"),
         megfelelő sorindexeinek beállításához szükséges.
@@ -318,7 +318,7 @@ void filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud)
             /*A megfelelő körív kiválasztása.*/
             for (j = 0; j < index; j++)
             {
-                if (abs(angle[j] - *(array2D + i * cols2d + 4)) <= interval)
+                if (abs(angle[j] - array2D[i].alpha) <= interval)
                 {
                     results = 1;
                     break;
@@ -328,45 +328,46 @@ void filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud)
             if (results == 1)
             {
                 /*Az értékek hozzáadás, a 2D tömbből.*/
-                *(array3D + j * piece * cols + indexArray[j] * cols + 0) = *(array2D + i * cols2d + 0); /*X koordináta.*/
-                *(array3D + j * piece * cols + indexArray[j] * cols + 1) = *(array2D + i * cols2d + 1); /*Y koordináta.*/
-                *(array3D + j * piece * cols + indexArray[j] * cols + 2) = *(array2D + i * cols2d + 2); /*Z koordináta.*/
-                *(array3D + j * piece * cols + indexArray[j] * cols + 7) = *(array2D + i * cols2d + 6); /* Intenzitás. */
+                array3D[j][indexArray[j]].p.x = array2D[i].p.x; /*X koordináta.*/
+                array3D[j][indexArray[j]].p.y = array2D[i].p.y; /*Y koordináta.*/
+                array3D[j][indexArray[j]].p.z = array2D[i].p.z; /*Z koordináta.*/
+                array3D[j][indexArray[j]].p.intensity = array2D[i].p.intensity; /* Intenzitás. */
+                //array3D[j][indexArray[j].p = array2D[i].p;
 
                 /*A már ismert magaspontok.*/
                 if (star_shaped_method )
-                    *(array3D + j * piece * cols + indexArray[j] * cols + 6) = *(array2D + i * cols2d + 5);
+                    array3D[j][indexArray[j]].isCurbPoint = array2D[i].isCurbPoint;
 
                 /*Itt annyi különbség lesz, hogy a "z" érték nélkül adjuk hozzá a távolságot.*/
-                *(array3D + j * piece * cols + indexArray[j] * cols + 3) = sqrt(pow(*(array2D + i * cols2d + 0), 2) + pow(*(array2D + i * cols2d + 1), 2));
+                array3D[j][indexArray[j]].d = sqrt(pow(array2D[i].p.x, 2) + pow(array2D[i].p.y, 2));
 
                 /*Az 5. oszlop feltöltése, a szögekkel. 360 fokban, minden pontnak van egy szöge.*/
-                bracket = (abs(*(array3D + j * piece * cols + indexArray[j] * cols + 0))) / (*(array3D + j * piece * cols + indexArray[j] * cols + 3));
+                bracket = (abs(array3D[j][indexArray[j]].p.x)) / (array3D[j][indexArray[j]].d);
                 if (bracket < -1)
                     bracket = -1;
                 else if (bracket > 1)
                     bracket = 1;
 
-                if (*(array3D + j * piece * cols + indexArray[j] * cols + 0) >= 0 && *(array3D + j * piece * cols + indexArray[j] * cols + 1) <= 0)
+                if (array3D[j][indexArray[j]].p.x >= 0 && array3D[j][indexArray[j]].p.y <= 0)
                 {
-                    *(array3D + j * piece * cols + indexArray[j] * cols + 4) = asin(bracket) * 180 / M_PI;
+                    array3D[j][indexArray[j]].alpha = asin(bracket) * 180 / M_PI;
                 }
-                else if (*(array3D + j * piece * cols + indexArray[j] * cols + 0) >= 0 && *(array3D + j * piece * cols + indexArray[j] * cols + 1) > 0)
+                else if (array3D[j][indexArray[j]].p.x >= 0 && array3D[j][indexArray[j]].p.y > 0)
                 {
-                    *(array3D + j * piece * cols + indexArray[j] * cols + 4) = 180 - (asin(bracket) * 180 / M_PI);
+                    array3D[j][indexArray[j]].alpha = 180 - (asin(bracket) * 180 / M_PI);
                 }
-                else if (*(array3D + j * piece * cols + indexArray[j] * cols + 0) < 0 && *(array3D + j * piece * cols + indexArray[j] * cols + 1) >= 0)
+                else if (array3D[j][indexArray[j]].p.x < 0 && array3D[j][indexArray[j]].p.y >= 0)
                 {
-                    *(array3D + j * piece * cols + indexArray[j] * cols + 4) = 180 + (asin(bracket) * 180 / M_PI);
+                    array3D[j][indexArray[j]].alpha = 180 + (asin(bracket) * 180 / M_PI);
                 }
                 else
                 {
-                    *(array3D + j * piece * cols + indexArray[j] * cols + 4) = 360 - (asin(bracket) * 180 / M_PI);
+                    array3D[j][indexArray[j]].alpha = 360 - (asin(bracket) * 180 / M_PI);
                 }
 
-                if (*(array3D + j * piece * cols + indexArray[j] * cols + 3) > maxDistance[j])
+                if (array3D[j][indexArray[j]].d > maxDistance[j])
                 {
-                    maxDistance[j] = *(array3D + j * piece * cols + indexArray[j] * cols + 3);
+                    maxDistance[j] = array3D[j][indexArray[j]].d;
                 }
 
                 indexArray[j]++;
@@ -374,7 +375,6 @@ void filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud)
         }
 
         /*A lefoglalt terület felszabadítása.*/
-        delete[] array2D;
 
         /*-- 1. lépés: A NEM út pontok szűrése. --*/
         int p2, p3; /*p2, p3 - A három vizsgált pontból, a második és a harmadik.*/
@@ -398,7 +398,7 @@ void filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud)
                 /*Új Y értékek beállítása, X = 0 értékek mellett.*/
                 for (j = 1; j < indexArray[i]; j++)
                 {
-                    *(array3D + i * piece * cols + j * cols + 5) = *(array3D + i * piece * cols + (j - 1) * cols + 5) + 0.0100;
+                    array3D[i][j].newY = array3D[i][j-1].newY + 0.0100;
                 }
 
                 /*A kör pontjainak vizsgálata. X = 0 módszer.*/
@@ -408,21 +408,21 @@ void filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud)
                     p3 = j + curbPoints;
 
                     d = sqrt(
-                        pow(*(array3D + i * piece * cols + p3 * cols + 0) - *(array3D + i * piece * cols + j * cols + 0), 2) +
-                        pow(*(array3D + i * piece * cols + p3 * cols + 1) - *(array3D + i * piece * cols + j * cols + 1), 2));
+                        pow(array3D[i][p3].p.x - array3D[i][j].p.x , 2) +
+                        pow(array3D[i][p3].p.y  - array3D[i][j].p.y , 2));
 
                     /*A távolság, 5 méternél kisebb legyen.*/
                     if (d < 5.0000)
                     {
                         x1 = sqrt(
-                            pow(*(array3D + i * piece * cols + p2 * cols + 5) - *(array3D + i * piece * cols + j * cols + 5), 2) +
-                            pow(*(array3D + i * piece * cols + p2 * cols + 2) - *(array3D + i * piece * cols + j * cols + 2), 2));
+                            pow(array3D[i][p2].newY  - array3D[i][j].newY , 2) +
+                            pow(array3D[i][p2].p.z - array3D[i][j].p.z , 2));
                         x2 = sqrt(
-                            pow(*(array3D + i * piece * cols + p3 * cols + 5) - *(array3D + i * piece * cols + p2 * cols + 5), 2) +
-                            pow(*(array3D + i * piece * cols + p3 * cols + 2) - *(array3D + i * piece * cols + p2 * cols + 2), 2));
+                            pow(array3D[i][p3].newY - array3D[i][p2].newY, 2) +
+                            pow(array3D[i][p3].p.z  - array3D[i][p2].p.z , 2));
                         x3 = sqrt(
-                            pow(*(array3D + i * piece * cols + p3 * cols + 5) - *(array3D + i * piece * cols + j * cols + 5), 2) +
-                            pow(*(array3D + i * piece * cols + p3 * cols + 2) - *(array3D + i * piece * cols + j * cols + 2), 2));
+                            pow(array3D[i][p3].newY  - array3D[i][j].newY , 2) +
+                            pow(array3D[i][p3].p.z  - array3D[i][j].p.z , 2));
 
                         bracket = (pow(x3, 2) - pow(x1, 2) - pow(x2, 2)) / (-2 * x1 * x2);
                         if (bracket < -1)
@@ -434,11 +434,11 @@ void filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud)
 
                         /*Feltétel és csoporthoz adás.*/
                         if (alpha <= angleFilter1 &&
-                            (abs(*(array3D + i * piece * cols + j * cols + 2) - *(array3D + i * piece * cols + p2 * cols + 2)) >= curbHeight ||
-                             abs(*(array3D + i * piece * cols + p3 * cols + 2) - *(array3D + i * piece * cols + p2 * cols + 2)) >= curbHeight) &&
-                            abs(*(array3D + i * piece * cols + j * cols + 2) - *(array3D + i * piece * cols + p3 * cols + 2)) >= 0.05)
+                            (abs(array3D[i][j].p.z  - array3D[i][p2].p.z ) >= curbHeight ||
+                            abs(array3D[i][p3].p.z  - array3D[i][p2].p.z ) >= curbHeight) &&
+                            abs(array3D[i][j].p.z  - array3D[i][p3].p.z ) >= 0.05)
                         {
-                            *(array3D + i * piece * cols + p2 * cols + 6) = 2;
+                            array3D[i][p2].isCurbPoint  = 2;
                         }
                     }
                 }
@@ -450,32 +450,32 @@ void filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud)
                 for (j = curbPoints; j <= (indexArray[i] - 1) - curbPoints; j++)
                 {
                     d = sqrt(
-                        pow(*(array3D + i * piece * cols + (j + curbPoints) * cols + 0) - *(array3D + i * piece * cols + (j - curbPoints) * cols + 0), 2) +
-                        pow(*(array3D + i * piece * cols + (j + curbPoints) * cols + 1) - *(array3D + i * piece * cols + (j - curbPoints) * cols + 1), 2));
+                        pow(array3D[i][j+curbPoints].p.x - array3D[i][j-curbPoints].p.x, 2) +
+                        pow(array3D[i][j+curbPoints].p.y - array3D[i][j-curbPoints].p.y, 2));
 
                     /*A távolság, 5 méternél kisebb legyen.*/
                     if (d < 5.0000)
                     {
                         /*Kezdeti értékek beállítása.*/
-                        max1 = abs(*(array3D + i * piece * cols + j * cols + 2)), max2 = abs(*(array3D + i * piece * cols + j * cols + 2));
-                        va1 = 0, va2 = 0, vb1 = 0, vb2 = 0;
+                        max1 = max2 = abs(array3D[i][j].p.z);
+                        va1 = va2 = vb1 = vb2 = 0;
 
                         /*Az 'a' vektor és a legnagyobb magasság beállítása.*/
                         for (k = j - 1; k >= j - curbPoints; k--)
                         {
-                            va1 = va1 + (*(array3D + i * piece * cols + k * cols + 0) - *(array3D + i * piece * cols + j * cols + 0));
-                            va2 = va2 + (*(array3D + i * piece * cols + k * cols + 1) - *(array3D + i * piece * cols + j * cols + 1));
-                            if (abs(*(array3D + i * piece * cols + k * cols + 2)) > max1)
-                                max1 = abs(*(array3D + i * piece * cols + k * cols + 2));
+                            va1 = va1 + (array3D[i][k].p.x - array3D[i][j].p.x);
+                            va2 = va2 + (array3D[i][k].p.y - array3D[i][j].p.y);
+                            if (abs(array3D[i][k].p.z) > max1)
+                                max1 = abs(array3D[i][k].p.z);
                         }
 
                         /*A 'b' vektor és a legnagyobb magasság beállítása.*/
                         for (k = j + 1; k <= j + curbPoints; k++)
                         {
-                            vb1 = vb1 + (*(array3D + i * piece * cols + k * cols + 0) - *(array3D + i * piece * cols + j * cols + 0));
-                            vb2 = vb2 + (*(array3D + i * piece * cols + k * cols + 1) - *(array3D + i * piece * cols + j * cols + 1));
-                            if (abs(*(array3D + i * piece * cols + k * cols + 2)) > max2)
-                                max2 = abs(*(array3D + i * piece * cols + k * cols + 2));
+                            vb1 = vb1 + (array3D[i][k].p.x - array3D[i][j].p.x );
+                            vb2 = vb2 + (array3D[i][k].p.y  - array3D[i][j].p.y );
+                            if (abs(array3D[i][k].p.z ) > max2)
+                                max2 = abs(array3D[i][k].p.z);
                         }
 
                         va1 = (1 / (float)curbPoints) * va1;
@@ -493,11 +493,11 @@ void filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud)
 
                         /*Feltétel és csoporthoz adás.*/
                         if (alpha <= angleFilter2 &&
-                            (max1 - abs(*(array3D + i * piece * cols + j * cols + 2)) >= curbHeight ||
-                             max2 - abs(*(array3D + i * piece * cols + j * cols + 2)) >= curbHeight) &&
+                            (max1 - abs(array3D[i][j].p.z ) >= curbHeight ||
+                            max2 - abs(array3D[i][j].p.z) >= curbHeight) &&
                             abs(max1 - max2) >= 0.05)
                         {
-                            *(array3D + i * piece * cols + j * cols + 6) = 2;
+                            array3D[i][j].isCurbPoint = 2;
                         }
                     }
                 }
@@ -506,11 +506,9 @@ void filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud)
 
         /*-- 2. lépés: Az út pontok szűrése. --*/
         /*A tömb elemeinek rendezése oly módon, hogy körönként, a szögeknek megfelelő sorrendben legyenek.*/
-        for (i = 0; i < index; i++)
-        {
-            quickSort(array3D, i, piece, 0, indexArray[i] - 1);
+        for (i = 0; i < index; i++){
+            quickSort(array3D, i, 0, indexArray[i] - 1);
         }
-
         /*Vakfolt keresés:
         Megvizsgáljuk a második körvonalat. (Az elsővel pontatlan.)
         Főleg a [90°-180° --- 180°-270°] tartomány és a [0°-90° --- 270°-360°] tartomány a lényeg, az autó két oldalán.
@@ -523,37 +521,37 @@ void filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud)
         {
             for (i = 0; i < indexArray[1]; i++)
             {
-                if (*(array3D + 1 * piece * cols + i * cols + 6) == 2)
+                if(array3D[1][i].isCurbPoint==2)
                 {
-                    if (*(array3D + 1 * piece * cols + i * cols + 4) >= 0 && *(array3D + 1 * piece * cols + i * cols + 4) < 90)
+                    if (array3D[1][i].alpha >= 0 && array3D[1][i].alpha < 90)
                     {
-                        if (*(array3D + 1 * piece * cols + i * cols + 4) > q1)
+                        if (array3D[1][i].alpha > q1)
                         {
-                            q1 = *(array3D + 1 * piece * cols + i * cols + 4);
+                            q1 = array3D[1][i].alpha;
                             c1 = i;
                         }
                     }
-                    else if (*(array3D + 1 * piece * cols + i * cols + 4) >= 90 && *(array3D + 1 * piece * cols + i * cols + 4) < 180)
+                    else if (array3D[1][i].alpha >= 90 && array3D[1][i].alpha < 180)
                     {
-                        if (*(array3D + 1 * piece * cols + i * cols + 4) < q2)
+                        if (array3D[1][i].alpha < q2)
                         {
-                            q2 = *(array3D + 1 * piece * cols + i * cols + 4);
+                            q2 = array3D[1][i].alpha;
                             c2 = i;
                         }
                     }
-                    else if (*(array3D + 1 * piece * cols + i * cols + 4) >= 180 && *(array3D + 1 * piece * cols + i * cols + 4) < 270)
+                    else if (array3D[1][i].alpha >= 180 && array3D[1][i].alpha < 270)
                     {
-                        if (*(array3D + 1 * piece * cols + i * cols + 4) > q3)
+                        if (array3D[1][i].alpha > q3)
                         {
-                            q3 = *(array3D + 1 * piece * cols + i * cols + 4);
+                            q3 = array3D[1][i].alpha;
                             c3 = i;
                         }
                     }
                     else
                     {
-                        if (*(array3D + 1 * piece * cols + i * cols + 4) < q4)
+                        if (array3D[1][i].alpha < q4)
                         {
-                            q4 = *(array3D + 1 * piece * cols + i * cols + 4);
+                            q4 = array3D[1][i].alpha;
                             c4 = i;
                         }
                     }
@@ -609,12 +607,12 @@ void filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud)
                 notRoad = 0;
 
                 /*Az első kör adott szakaszának vizsgálata.*/
-                for (j = 0; *(array3D + 0 * piece * cols + j * cols + 4) <= i + beamZone && j < indexArray[0]; j++)
+                for (j = 0; array3D[0][j].alpha <= i + beamZone && j < indexArray[0]; j++)
                 {
-                    if (*(array3D + 0 * piece * cols + j * cols + 4) >= i)
+                    if (array3D[0][j].alpha >= i)
                     {
                         /*Nem vizsgáljuk tovább az adott szakaszt, ha találunk benne magaspontot.*/
-                        if (*(array3D + 0 * piece * cols + j * cols + 6) == 2)
+                        if (array3D[0][j].isCurbPoint == 2)
                         {
                             notRoad = 1;
                             break;
@@ -626,11 +624,11 @@ void filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud)
                 if (notRoad == 0)
                 {
                     /*Az első kör szakaszát elfogadjuk.*/
-                    for (j = 0; *(array3D + 0 * piece * cols + j * cols + 4) <= i + beamZone && j < indexArray[0]; j++)
+                    for (j = 0; array3D[0][j].alpha <= i + beamZone && j < indexArray[0]; j++)
                     {
-                        if (*(array3D + 0 * piece * cols + j * cols + 4) >= i)
+                        if (array3D[0][j].alpha >= i)
                         {
-                            *(array3D + 0 * piece * cols + j * cols + 6) = 1;
+                            array3D[0][j].isCurbPoint = 1;
                         }
                     }
 
@@ -648,12 +646,12 @@ void filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud)
                         }
 
                         /*Az új kör pontjait vizsgáljuk.*/
-                        for (l = 0; *(array3D + k * piece * cols + l * cols + 4) <= currentDegree && l < indexArray[k]; l++)
+                        for (l = 0; array3D[k][l].alpha <= currentDegree && l < indexArray[k]; l++)
                         {
-                            if (*(array3D + k * piece * cols + l * cols + 4) >= i)
+                            if (array3D[k][l].alpha >= i)
                             {
                                 /*Nem vizsgáljuk tovább az adott szakaszt, ha találunk benne magaspontot.*/
-                                if (*(array3D + k * piece * cols + l * cols + 6) == 2)
+                                if (array3D[k][l].isCurbPoint == 2)
                                 {
                                     notRoad = 1;
                                     break;
@@ -666,11 +664,11 @@ void filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud)
                             break;
 
                         /*Egyébként, elfogadjuk az adott kör, adott szakaszát.*/
-                        for (l = 0; *(array3D + k * piece * cols + l * cols + 4) <= currentDegree && l < indexArray[k]; l++)
+                        for (l = 0; array3D[k][l].alpha <= currentDegree && l < indexArray[k]; l++)
                         {
-                            if (*(array3D + k * piece * cols + l * cols + 4) >= i)
+                            if (array3D[k][l].alpha >= i)
                             {
-                                *(array3D + k * piece * cols + l * cols + 6) = 1;
+                                array3D[k][l].isCurbPoint = 1;
                             }
                         }
                     }
@@ -718,12 +716,12 @@ void filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud)
                 notRoad = 0;
 
                 /*Az első kör adott szakaszának vizsgálata.*/
-                for (j = indexArray[0] - 1; *(array3D + 0 * piece * cols + j * cols + 4) >= i - beamZone && j >= 0; --j)
+                for (j = indexArray[0] - 1; array3D[0][j].alpha >= i - beamZone && j >= 0; --j)
                 {
-                    if (*(array3D + 0 * piece * cols + j * cols + 4) <= i)
+                    if (array3D[0][j].alpha <= i)
                     {
                         /*Nem vizsgáljuk tovább az adott szakaszt, ha találunk benne magaspontot.*/
-                        if (*(array3D + 0 * piece * cols + j * cols + 6) == 2)
+                        if (array3D[0][j].isCurbPoint == 2)
                         {
                             notRoad = 1;
                             break;
@@ -735,11 +733,11 @@ void filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud)
                 if (notRoad == 0)
                 {
                     /*Az első kör szakaszát elfogadjuk.*/
-                    for (j = indexArray[0] - 1; *(array3D + 0 * piece * cols + j * cols + 4) >= i - beamZone && j >= 0; --j)
+                    for (j = indexArray[0] - 1; array3D[0][j].alpha >= i - beamZone && j >= 0; --j)
                     {
-                        if (*(array3D + 0 * piece * cols + j * cols + 4) <= i)
+                        if (array3D[0][j].alpha <= i)
                         {
-                            *(array3D + 0 * piece * cols + j * cols + 6) = 1;
+                            array3D[0][j].isCurbPoint = 1;
                         }
                     }
 
@@ -757,12 +755,12 @@ void filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud)
                         }
 
                         /*Az új kör pontjait vizsgáljuk.*/
-                        for (l = indexArray[k] - 1; *(array3D + k * piece * cols + l * cols + 4) >= currentDegree && l >= 0; --l)
+                        for (l = indexArray[k] - 1; array3D[k][l].alpha >= currentDegree && l >= 0; --l)
                         {
-                            if (*(array3D + k * piece * cols + l * cols + 4) <= i)
+                            if (array3D[k][l].alpha <= i)
                             {
                                 /*Nem vizsgáljuk tovább az adott szakaszt, ha találunk benne magaspontot.*/
-                                if (*(array3D + k * piece * cols + l * cols + 6) == 2)
+                                if (array3D[k][l].isCurbPoint == 2)
                                 {
                                     notRoad = 1;
                                     break;
@@ -775,11 +773,11 @@ void filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud)
                             break;
 
                         /*Egyébként, elfogadjuk az adott kör, adott szakaszát.*/
-                        for (l = indexArray[k] - 1; *(array3D + k * piece * cols + l * cols + 4) >= currentDegree && l >= 0; --l)
+                        for (l = indexArray[k] - 1; array3D[k][l].alpha >= currentDegree && l >= 0; --l)
                         {
-                            if (*(array3D + k * piece * cols + l * cols + 4) <= i)
+                            if (array3D[k][l].alpha <= i)
                             {
-                                *(array3D + k * piece * cols + l * cols + 6) = 1;
+                                array3D[k][l].isCurbPoint = 1;
                             }
                         }
                     }
@@ -810,16 +808,16 @@ void filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud)
                 for (k = 0; k < indexArray[j]; k++)
                 {
                     /*Ha találunk az adott fokban nem út pontot, akkor kilépünk, mert utána úgyse lesz már út pont és a "redPoints" változó 1-es érétket kap.*/
-                    if (*(array3D + j * piece * cols + k * cols + 6) != 1 && *(array3D + j * piece * cols + k * cols + 4) >= i && *(array3D + j * piece * cols + k * cols + 4) < i + 1)
+                    if (array3D[j][k].isCurbPoint != 1 && array3D[j][k].alpha >= i && array3D[j][k].alpha < i + 1)
                     {
                         redPoints = 1;
                         break;
                     }
 
                     /*A talált zöld pont távolságának vizsgálata.*/
-                    if (*(array3D + j * piece * cols + k * cols + 6) == 1 && *(array3D + j * piece * cols + k * cols + 4) >= i && *(array3D + j * piece * cols + k * cols + 4) < i + 1)
+                    if (array3D[j][k].isCurbPoint == 1 && array3D[j][k].alpha >= i && array3D[j][k].alpha < i + 1)
                     {
-                        d = sqrt(pow(0 - *(array3D + j * piece * cols + k * cols + 0), 2) + pow(0 - *(array3D + j * piece * cols + k * cols + 1), 2));
+                        d = sqrt(pow(0 - array3D[j][k].p.x, 2) + pow(0 - array3D[j][k].p.y, 2));
 
                         if (d > maxDistanceRoad)
                         {
@@ -837,9 +835,9 @@ void filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud)
             /*A marker pontok hozzáadása a tömbhöz.*/
             if (ID1 != -1 && ID2 != -1)
             {
-                markerPointsArray[cM][0] = *(array3D + ID1 * piece * cols + ID2 * cols + 0);
-                markerPointsArray[cM][1] = *(array3D + ID1 * piece * cols + ID2 * cols + 1);
-                markerPointsArray[cM][2] = *(array3D + ID1 * piece * cols + ID2 * cols + 2);
+                markerPointsArray[cM][0] = array3D[ID1][ID2].p.x;
+                markerPointsArray[cM][1] = array3D[ID1][ID2].p.y;
+                markerPointsArray[cM][2] = array3D[ID1][ID2].p.z;
                 markerPointsArray[cM][3] = redPoints;
                 cM++;
             }
@@ -850,25 +848,13 @@ void filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud)
         {
             for (j = 0; j < indexArray[i]; j++)
             {
-                /*Az út pontok.*/
-                if (*(array3D + i * piece * cols + j * cols + 6) == 1)
-                {
-                    pt.x = *(array3D + i * piece * cols + j * cols + 0);
-                    pt.y = *(array3D + i * piece * cols + j * cols + 1);
-                    pt.z = *(array3D + i * piece * cols + j * cols + 2);
-                    pt.intensity = *(array3D + i * piece * cols + j * cols + 7);
-                    cloud_filtered_Road.push_back(pt);
-                }
-
-                /*A magas pontok.*/
-                else if (*(array3D + i * piece * cols + j * cols + 6) == 2)
-                {
-                    pt.x = *(array3D + i * piece * cols + j * cols + 0);
-                    pt.y = *(array3D + i * piece * cols + j * cols + 1);
-                    pt.z = *(array3D + i * piece * cols + j * cols + 2);
-                    pt.intensity = *(array3D + i * piece * cols + j * cols + 7);
-                    cloud_filtered_High.push_back(pt);
-                }
+                pt.x = array3D[i][j].p.x;
+                pt.y = array3D[i][j].p.y;
+                pt.z = array3D[i][j].p.z;
+                pt.intensity = array3D[i][j].p.intensity;
+                //pt = array3D[i][j].p;
+                if (array3D[i][j].isCurbPoint == 1) cloud_filtered_Road.push_back(pt); /*Az út pontok.*/
+                else if (array3D[i][j].isCurbPoint == 2) cloud_filtered_High.push_back(pt); /*A magas pontok.*/
             }
         }
 
@@ -917,7 +903,7 @@ void filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud)
             visualization_msgs::MarkerArray ma;    /*Egy marker array, amiben a zöld / piros line strip-ek kerülnek.*/
             visualization_msgs::Marker line_strip; /*Az adott zöld vagy piros szakasz / line strip.*/
             geometry_msgs::Point point;            /*Az adott pont értékei. Ez tölti fel az adott line stip-et.*/
-float zavg = 0.0;                      /*Átlagos z-érték (egyszerűsített polygonhoz)*/
+            float zavg = 0.0;                      /*Átlagos z-érték (egyszerűsített polygonhoz)*/
 
             int lineStripID = 0; /*Az adott line strip ID-ja.*/
 
@@ -1149,30 +1135,37 @@ float zavg = 0.0;                      /*Átlagos z-érték (egyszerűsített po
         }
 
 
-        for (j = 0; j < indexArray[10]; j++)
-        {
-            pt.x = *(array3D + 10 * piece * cols + j * cols + 0);
-            pt.y = *(array3D + 10 * piece * cols + j * cols + 1);
-            pt.z = *(array3D + 10 * piece * cols + j * cols + 2);
+        for (j = 0; j < indexArray[10]; j++){
+            pt.x = array3D[10][j].p.x;
+            pt.y = array3D[10][j].p.y;
+            pt.z = array3D[10][j].p.z;
+            //pt = array3D[10][j].p;
             cloud_filtered_ProbablyRoad.push_back(pt);
         }
+        
 
-        /*A lefoglalt terület felszabadítása.*/
-        delete[] array3D;
+        /*Road és High topic header.*/
+        cloud_filtered_Road.header = cloud.header;
+        cloud_filtered_ProbablyRoad.header = cloud.header;
+        cloud_filtered_High.header = cloud.header;
+        cloud_filtered_Box.header = cloud.header;
+
+        /*Publish.*/
+        pub_road.publish(cloud_filtered_Road); /*Szűrt pontok (úttest).*/
+        pub_high.publish(cloud_filtered_High); /*Szűrt pontok (nem úttest).*/
+        pub_box.publish(cloud_filtered_Box);  /*A vizsgált terület, összes pontja.*/
+        pub_pobroad.publish(cloud_filtered_ProbablyRoad);
     }
-
-    /*Road és High topic header.*/
-    cloud_filtered_Road.header = cloud.header;
-    cloud_filtered_ProbablyRoad.header = cloud.header;
-    cloud_filtered_High.header = cloud.header;
-    cloud_filtered_Box.header = cloud.header;
-
+    private:
     /*Publish.*/
-    pub_road.publish(cloud_filtered_Road); /*Szűrt pontok (úttest).*/
-    pub_high.publish(cloud_filtered_High); /*Szűrt pontok (nem úttest).*/
-    pub_box.publish(cloud_filtered_Box);  /*A vizsgált terület, összes pontja.*/
-    pub_pobroad.publish(cloud_filtered_ProbablyRoad);
-}
+    ros::Publisher pub_road;        /*Szűrt pontok (járható úttest).*/
+    ros::Publisher pub_high;        /*Szűrt pontok (nem járható úttest).*/
+    ros::Publisher pub_box;         /*Szűrt pontok (nem úttest).*/
+    ros::Publisher pub_pobroad;     /*A vizsgált terület, összes pontja.*/
+    ros::Publisher pub_marker;      /*Marker.*/
+    /*Subscribe*/
+    ros::Subscriber sub;
+};
 
 /*MAIN*/
 int main(int argc, char **argv)
@@ -1190,21 +1183,7 @@ int main(int argc, char **argv)
 
     /*NodeHandle*/
     ros::NodeHandle nh;
-
-    /*Feliratkozás az adott topicra.*/
-    ros::Subscriber sub = nh.subscribe(topicName, 1, filtered);
-
-    /*A szűrt adatok hírdetése.*/
-    pub_road = nh.advertise<pcl::PCLPointCloud2>("road", 1);
-    pub_high = nh.advertise<pcl::PCLPointCloud2>("curb", 1);
-    pub_box = nh.advertise<pcl::PCLPointCloud2>("roi", 1); // ROI - region of interest
-    pub_pobroad = nh.advertise<pcl::PCLPointCloud2>("road_probably", 1);
-    pub_marker = nh.advertise<visualization_msgs::MarkerArray>("road_marker", 1);
-
-    /*Csaplár László kódjához szükséges.*/
-    beam_init();
-
-    ROS_INFO("Ready");
+    Detector detector(&nh);
 
     ros::spin();
     return 0;
