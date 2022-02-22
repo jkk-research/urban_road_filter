@@ -35,6 +35,7 @@ void paramsCallback(lidar_filters_pkg::LidarFiltersConfig &config, uint32_t leve
 /*MAIN*/
 int main(int argc, char **argv)
 {
+
     /*Az ROS inicializálása.*/
     ros::init(argc, argv, "urban_road_filt");
     ROS_INFO("Initializing %s", ros::this_node::getName().c_str());

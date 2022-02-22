@@ -35,21 +35,6 @@ using namespace boost::assign;
 
 typedef boost::geometry::model::d2::point_xy<float> xy;
 
-struct polar    //polar-coordinate struct for the points
-{
-    int id;     //original ID of point (from input cloud)
-    float r;    //radial coordinate
-    float fi;   //angular coordinate (ccw angle from x-axis)
-};
-
-struct box      //struct for detection beams
-{
-    std::vector<polar> p; //points within the beam's area
-    box *l, *r;           //pointer to adjacent beams (currently not used)
-    bool yx;              //whether it is aligned more with the y-axis (than the x-axis)
-    float o, d;           //internal parameters (trigonometry)
-};
-
 struct Point2D{
     pcl::PointXYZI p;
     float d;
@@ -91,6 +76,7 @@ class Detector{
     void quickSort(std::vector<std::vector<Point3D>>& array3D, int arc, int low, int high);
 
     void filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud);
+    
     private:
     ros::Publisher pub_road;        
     ros::Publisher pub_high;        
