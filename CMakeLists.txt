@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.0.2)
 project(urban_road_filter)
 
-## Compile as C++11, supported in ROS Kinetic and newer
-add_compile_options(-std=c++11)
+## Compile as C++17, supported in ROS Kinetic and newer
+add_compile_options(-std=c++17)
 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
@@ -110,8 +110,8 @@ generate_dynamic_reconfigure_options(
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-#  INCLUDE_DIRS include
-#  LIBRARIES urban_road_filter
+  INCLUDE_DIRS include
+  LIBRARIES urban_road_filter
 #  CATKIN_DEPENDS nav_msgs roscpp rospy std_msgs
 #  DEPENDS system_lib
 )
@@ -124,9 +124,10 @@ catkin_package(
 ## Your package locations should be listed before other locations
 include_directories(
 # include
+  include
   ${catkin_INCLUDE_DIRS}
 )
 
-add_executable(lidar_road src/lidarSegmentation.cpp)
+add_executable(lidar_road src/lidarSegmentation.cpp src/main.cpp)
 add_dependencies(lidar_road ${PROJECT_NAME}_gencfg)
 target_link_libraries(lidar_road ${catkin_LIBRARIES})
