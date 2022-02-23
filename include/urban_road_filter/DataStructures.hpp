@@ -47,7 +47,7 @@ struct Point3D:public Point2D{
 
 extern std::string fixedFrame;                               /* Fixed Frame.*/
 extern std::string topicName;                                /* subscribed topic.*/
-extern bool x_zero_method, y_zero_method, star_shaped_method ; /*Methods of roadside detection*/
+extern bool x_zero_method, z_zero_method, star_shaped_method ; /*Methods of roadside detection*/
 extern bool blind_spots;                                     /*Vakfolt javító algoritmus.*/
 extern int xDirection;                                       /*A vakfolt levágás milyen irányú.*/
 extern float interval;                                       /*A LIDAR vertikális szögfelbontásának, elfogadott intervalluma.*/
@@ -75,7 +75,15 @@ class Detector{
 
     void quickSort(std::vector<std::vector<Point3D>>& array3D, int arc, int low, int high);
 
-    void filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud);
+    //void filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud);
+
+    void filter(const pcl::PointCloud<pcl::PointXYZI> &cloud);
+
+    void starShapedSearch(std::vector<Point2D>& array2D);
+
+    void xZeroMethod(std::vector<std::vector<Point3D>>& array3D,int index,int* indexArray);
+
+    void zZeroMethod(std::vector<std::vector<Point3D>>& array3D,int index,int* indexArray);
     
     private:
     ros::Publisher pub_road;        

@@ -5,7 +5,7 @@
 int channels = 64;                                    /* The number of channels of the LIDAR .*/
 std::string fixedFrame;                               /* Fixed Frame.*/
 std::string topicName;                                /* subscribed topic.*/
-bool x_zero_method, y_zero_method, star_shaped_method ; /*Methods of roadside detection*/
+bool x_zero_method, z_zero_method, star_shaped_method ; /*Methods of roadside detection*/
 bool blind_spots;                                     /*Vakfolt javító algoritmus.*/
 int xDirection;                                       /*A vakfolt levágás milyen irányú.*/
 float interval;                                       /*A LIDAR vertikális szögfelbontásának, elfogadott intervalluma.*/
@@ -27,7 +27,7 @@ int ghostcount = 0;                                   /* segédváltozó az elav
 
 Detector::Detector(ros::NodeHandle* nh){
     /*Feliratkozás az adott topicra.*/
-    sub = nh->subscribe(topicName, 1, &Detector::filtered,this);
+    sub = nh->subscribe(topicName, 1, &Detector::filter,this);
     /*A szűrt adatok hírdetése.*/
     pub_road = nh->advertise<pcl::PCLPointCloud2>("road", 1);
     pub_high = nh->advertise<pcl::PCLPointCloud2>("curb", 1);
@@ -69,9 +69,7 @@ void Detector::quickSort(std::vector<std::vector<Point3D>>& array3D, int arc, in
     }
 }
 
-/*Ez a függvény végzi a szűrést.*/
-void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud)
-{
+void Detector::filter(const pcl::PointCloud<pcl::PointXYZI> &cloud){
     /*Segédváltozók, a "for" ciklusokhoz.*/
     int i, j, k, l;
 
@@ -95,19 +93,18 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud)
     }
 
     /*A pontok darabszáma, a vizsgált területen.*/
-    int piece = cloud_filtered_Box.points.size();
+    size_t piece = cloud_filtered_Box.points.size();
 
     /*Minimum 30 pont legyen a vizsgált területen, különben programhibák lesznek.
     Illetve nincs is értelme vizsgálni ilyen kevés pontot.*/
     if (piece < 30){
         return;
     }
-    /*Csaplár László kódjának meghívása és a szükséges határérték beállítása.*/
+     /*Csaplár László kódjának meghívása és a szükséges határérték beállítása.*/
     if (star_shaped_method ){
         slope_param = angleFilter3 * (M_PI / 180);
         callback(cloud_filtered_Box);
     }
-
     /*
     2D tömb:
     - A pontok értékei: (0: X, 1: Y, 2: Z),
@@ -129,7 +126,6 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud)
     /*A szögfelbontásokat tároló 1D tömböt, segít feltölteni.*/
     int index = 0;
 
-    /*Új körvonalhoz tartozik az adott szög?*/
     int newCircle;
 
     /*A 2D tömb feltöltése.*/
@@ -186,17 +182,13 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud)
             }
         }
     }
-    /*--- A 6. oszlop feltöltése. ---*/
-    /*Csaplár László kódja által, magaspontoknak jelölt pontok felvétele a 2D tömbbe.*/
-    if (star_shaped_method ){
-        for (i = 0; i < padkaIDs.size(); i++){
-            array2D[padkaIDs[i]].isCurbPoint = 2;
-        }
-    }
+    if(star_shaped_method)
+        Detector::starShapedSearch(array2D);
 
     /*A szögfelbontások növekvő sorrendbe rendezése.
     A legkisebb lesz az első körív és így tovább.*/
     std::sort(angle, angle + index);
+    /*Segédváltozók, a "for" ciklusokhoz.*/
 
     /*
     3D tömb:
@@ -349,7 +341,7 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud)
             }
         }
 
-        if (y_zero_method)
+        if (z_zero_method)
         {
             /*A kör pontjainak vizsgálata. Z = 0 módszer.*/
             for (j = curbPoints; j <= (indexArray[i] - 1) - curbPoints; j++)
@@ -1059,3 +1051,153 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud)
     pub_box.publish(cloud_filtered_Box);  /*A vizsgált terület, összes pontja.*/
     pub_pobroad.publish(cloud_filtered_ProbablyRoad);
 }
+
+void Detector::starShapedSearch(std::vector<Point2D>& array2D){
+    /*--- A 6. oszlop feltöltése. ---*/
+    /*Csaplár László kódja által, magaspontoknak jelölt pontok felvétele a 2D tömbbe.*/
+    if (star_shaped_method ){
+        for (size_t i = 0; i < padkaIDs.size(); i++){
+            array2D[padkaIDs[i]].isCurbPoint = 2;
+        }
+    }
+}
+
+void Detector::xZeroMethod(std::vector<std::vector<Point3D>>& array3D,int index,int* indexArray){
+    /*-- 1. lépés: A NEM út pontok szűrése. --*/
+    int p2, p3; /*p2, p3 - A három vizsgált pontból, a második és a harmadik.*/
+
+    /*
+    --> alpha - A három pont és a két vektor által bezárt szög.
+    --> x1, x2, x3 - A három pont által bezárt háromszög oldalainak hossza.
+    --> curbPoints - A pontok becsült száma, a szegélyen.
+    --> va1, va2, vb1, vb2 - A két vektor.
+    --> max1, max2 - Nem csak a szöget, hanem a magasságot is vizsgálni kell.
+    --> d - A két szélső pont közötti távolság. A LIDAR forgása és a körív szakadások miatt.
+        d - Ez a változó a program későbbi részein is felhasználásra kerül.
+    */
+    float alpha, x1, x2, x3, va1, va2, vb1, vb2, max1, max2, d, bracket;
+    for (size_t i = 0; i < index; i++)
+    {
+        /*Új Y értékek beállítása, X = 0 értékek mellett.*/
+        for (size_t j = 1; j < indexArray[i]; j++)
+        {
+            array3D[i][j].newY = array3D[i][j-1].newY + 0.0100;
+        }
+
+        /*A kör pontjainak vizsgálata. X = 0 módszer.*/
+        for (size_t j = curbPoints; j <= (indexArray[i] - 1) - curbPoints; j++)
+        {
+            p2 = j + curbPoints / 2;
+            p3 = j + curbPoints;
+
+            d = sqrt(
+                pow(array3D[i][p3].p.x - array3D[i][j].p.x , 2) +
+                pow(array3D[i][p3].p.y  - array3D[i][j].p.y , 2));
+
+            /*A távolság, 5 méternél kisebb legyen.*/
+            if (d < 5.0000)
+            {
+                x1 = sqrt(
+                    pow(array3D[i][p2].newY  - array3D[i][j].newY , 2) +
+                    pow(array3D[i][p2].p.z - array3D[i][j].p.z , 2));
+                x2 = sqrt(
+                    pow(array3D[i][p3].newY - array3D[i][p2].newY, 2) +
+                    pow(array3D[i][p3].p.z  - array3D[i][p2].p.z , 2));
+                x3 = sqrt(
+                    pow(array3D[i][p3].newY  - array3D[i][j].newY , 2) +
+                    pow(array3D[i][p3].p.z  - array3D[i][j].p.z , 2));
+
+                bracket = (pow(x3, 2) - pow(x1, 2) - pow(x2, 2)) / (-2 * x1 * x2);
+                if (bracket < -1)
+                    bracket = -1;
+                else if (bracket > 1)
+                    bracket = 1;
+
+                alpha = acos(bracket) * 180 / M_PI;
+
+                /*Feltétel és csoporthoz adás.*/
+                if (alpha <= angleFilter1 &&
+                    (abs(array3D[i][j].p.z  - array3D[i][p2].p.z ) >= curbHeight ||
+                    abs(array3D[i][p3].p.z  - array3D[i][p2].p.z ) >= curbHeight) &&
+                    abs(array3D[i][j].p.z  - array3D[i][p3].p.z ) >= 0.05)
+                {
+                    array3D[i][p2].isCurbPoint  = 2;
+                }
+            }
+        }
+    }
+}
+
+void Detector::zZeroMethod(std::vector<std::vector<Point3D>>& array3D,int index,int* indexArray){
+    /*-- 1. lépés: A NEM út pontok szűrése. --*/
+    int p2, p3; /*p2, p3 - A három vizsgált pontból, a második és a harmadik.*/
+
+    /*
+    --> alpha - A három pont és a két vektor által bezárt szög.
+    --> x1, x2, x3 - A három pont által bezárt háromszög oldalainak hossza.
+    --> curbPoints - A pontok becsült száma, a szegélyen.
+    --> va1, va2, vb1, vb2 - A két vektor.
+    --> max1, max2 - Nem csak a szöget, hanem a magasságot is vizsgálni kell.
+    --> d - A két szélső pont közötti távolság. A LIDAR forgása és a körív szakadások miatt.
+        d - Ez a változó a program későbbi részein is felhasználásra kerül.
+    */
+    float alpha, x1, x2, x3, va1, va2, vb1, vb2, max1, max2, d, bracket;
+    for (size_t i = 0; i < index; i++){
+    /*A kör pontjainak vizsgálata. Z = 0 módszer.*/
+            for (size_t j = curbPoints; j <= (indexArray[i] - 1) - curbPoints; j++)
+            {
+                d = sqrt(
+                    pow(array3D[i][j+curbPoints].p.x - array3D[i][j-curbPoints].p.x, 2) +
+                    pow(array3D[i][j+curbPoints].p.y - array3D[i][j-curbPoints].p.y, 2));
+
+                /*A távolság, 5 méternél kisebb legyen.*/
+                if (d < 5.0000)
+                {
+                    /*Kezdeti értékek beállítása.*/
+                    max1 = max2 = abs(array3D[i][j].p.z);
+                    va1 = va2 = vb1 = vb2 = 0;
+
+                    /*Az 'a' vektor és a legnagyobb magasság beállítása.*/
+                    for (size_t k = j - 1; k >= j - curbPoints; k--)
+                    {
+                        va1 = va1 + (array3D[i][k].p.x - array3D[i][j].p.x);
+                        va2 = va2 + (array3D[i][k].p.y - array3D[i][j].p.y);
+                        if (abs(array3D[i][k].p.z) > max1)
+                            max1 = abs(array3D[i][k].p.z);
+                    }
+
+                    /*A 'b' vektor és a legnagyobb magasság beállítása.*/
+                    for (size_t k = j + 1; k <= j + curbPoints; k++)
+                    {
+                        vb1 = vb1 + (array3D[i][k].p.x - array3D[i][j].p.x );
+                        vb2 = vb2 + (array3D[i][k].p.y  - array3D[i][j].p.y );
+                        if (abs(array3D[i][k].p.z ) > max2)
+                            max2 = abs(array3D[i][k].p.z);
+                    }
+
+                    va1 = (1 / (float)curbPoints) * va1;
+                    va2 = (1 / (float)curbPoints) * va2;
+                    vb1 = (1 / (float)curbPoints) * vb1;
+                    vb2 = (1 / (float)curbPoints) * vb2;
+
+                    bracket = (va1 * vb1 + va2 * vb2) / (sqrt(pow(va1, 2) + pow(va2, 2)) * sqrt(pow(vb1, 2) + pow(vb2, 2)));
+                    if (bracket < -1)
+                        bracket = -1;
+                    else if (bracket > 1)
+                        bracket = 1;
+
+                    alpha = acos(bracket) * 180 / M_PI;
+
+                    /*Feltétel és csoporthoz adás.*/
+                    if (alpha <= angleFilter2 &&
+                        (max1 - abs(array3D[i][j].p.z ) >= curbHeight ||
+                        max2 - abs(array3D[i][j].p.z) >= curbHeight) &&
+                        abs(max1 - max2) >= 0.05)
+                    {
+                        array3D[i][j].isCurbPoint = 2;
+                    }
+                }
+            }
+    }
+}
+/*Ez a függvény végzi a szűrést.*/

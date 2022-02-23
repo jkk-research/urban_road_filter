@@ -5,7 +5,7 @@ void paramsCallback(lidar_filters_pkg::LidarFiltersConfig &config, uint32_t leve
     fixedFrame = config.fixed_frame;
     topicName = config.topic_name;
     x_zero_method = config.x_zero_method;
-    y_zero_method = config.z_zero_method;
+    z_zero_method = config.z_zero_method;
     star_shaped_method  = config.star_shaped_method ;
     blind_spots = config.blind_spots;
     xDirection = config.xDirection;
