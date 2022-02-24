@@ -7,6 +7,7 @@
 #include <math.h>
 #include <cmath>
 #include <vector>
+#include <memory>
 
 /*Includes for ROS.*/
 #include <ros/ros.h>
@@ -24,6 +25,7 @@
 #include <pcl/point_cloud.h>
 #include <pcl_ros/point_cloud.h>
 #include <pcl/point_types.h>
+#include <pcl/filters/conditional_removal.h>
 
 /*ramer-douglas-peucker*/
 #include <boost/geometry.hpp>
@@ -82,6 +84,26 @@ extern bool zavg_allow;                               /*egyszerűsített polygon
 extern float polysimp;                                 /*polygon-egyszerűsítési tényező (Ramer-Douglas-Peucker)*/
 extern float polyz;                                   /*manuálisan megadott z-koordináta (polygon)*/
 
+/*For pointcloud filtering*/
+template <typename PointT>
+class FilteringCondition : public pcl::ConditionBase<PointT>
+{
+public:
+  typedef std::shared_ptr<FilteringCondition<PointT>> Ptr;
+  typedef std::shared_ptr<const FilteringCondition<PointT>> ConstPtr;
+  typedef std::function<bool(const PointT&)> FunctorT;
+
+  FilteringCondition(FunctorT evaluator): 
+    pcl::ConditionBase<PointT>(),_evaluator( evaluator ) 
+  {}
+
+  virtual bool evaluate (const PointT &point) const {
+    // just delegate ALL the work to the injected std::function
+    return _evaluator(point);
+  }
+private:
+  FunctorT _evaluator;
+};
 
 class Detector{
     public:
@@ -93,13 +115,15 @@ class Detector{
 
     //void filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud);
 
-    void filter(const pcl::PointCloud<pcl::PointXYZI> &cloud);
+    void filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud);
 
     void starShapedSearch(std::vector<Point2D>& array2D);
 
     void xZeroMethod(std::vector<std::vector<Point3D>>& array3D,int index,int* indexArray);
 
     void zZeroMethod(std::vector<std::vector<Point3D>>& array3D,int index,int* indexArray);
+
+    void blindSpots(std::vector<std::vector<Point3D>>& array3D,int index,int* indexArray,float* maxDistance);
     
     private:
     ros::Publisher pub_road;        

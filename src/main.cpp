@@ -1,4 +1,4 @@
-#include "urban_road_filter/DataStructures.hpp"
+#include "urban_road_filter/data_structures.hpp"
 
 /*A paraméterek beállítása.*/
 void paramsCallback(lidar_filters_pkg::LidarFiltersConfig &config, uint32_t level){

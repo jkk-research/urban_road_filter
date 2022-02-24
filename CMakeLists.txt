@@ -128,6 +128,7 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
 )
 
-add_executable(lidar_road src/lidarSegmentation.cpp src/main.cpp)
+add_executable(lidar_road src/lidar_segmentation.cpp src/main.cpp src/star_shaped_search.cpp 
+                          src/x_zero_method.cpp src/z_zero_method.cpp src/blind_spots.cpp)
 add_dependencies(lidar_road ${PROJECT_NAME}_gencfg)
 target_link_libraries(lidar_road ${catkin_LIBRARIES})

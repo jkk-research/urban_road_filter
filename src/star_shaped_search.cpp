@@ -3,6 +3,7 @@
 
     description: a complementary algorithm for roadside detection, part of the "urban_road_filter" package
 */
+#include "urban_road_filter/data_structures.hpp"
 
 int rep = 360;                  //number of detection beams (how many parts/sectors will the pointcloud be divided along the angular direction -> one beam per sector)
 float width = 0.2;              //width of beams
@@ -11,6 +12,7 @@ float slope_param;              //"slope" parameter for edge detection (given by
 int dmin_param;                 //(see below)
 float kdev_param;               //(see below)
 float kdist_param;              //(see below)
+float angleFilter3;             /*Csaplár László kódjához szükséges. Sugár irányú határérték (fokban).*/
 
 std::vector<box> beams(rep);        //beams
 std::vector<box *> beamp(rep + 1);  //pointers to the beams (+1 -> 0 AND 360)
@@ -143,11 +145,13 @@ void beamfunc(const int tid, std::vector<Point2D> &array2D) //beam algorithm (fi
     beams[tid].p.clear();   //evaluation done, the points are no longer needed
 }
 
-void starshaped(std::vector<Point2D> &array2D)  //entry point to the code, everything gets called here (except for initialization - that needs to be called separately, at the start of the program - "beam_init()")
+void Detector::starShapedSearch(std::vector<Point2D> &array2D)  //entry point to the code, everything gets called here (except for initialization - that needs to be called separately, at the start of the program - "beam_init()")
 {
+    beam_init();
     beamp.push_back(&beams[0]);     //initializing "360 deg = 0 deg" pointer
     int f, s = array2D.size();   //temporary variables
     float r, fi;                    //polar coordinates
+    slope_param = angleFilter3 * (M_PI / 180);
 
     for (int i = 0; i < s; i++) //points to polar coordinate-system + sorting into sectors
     {

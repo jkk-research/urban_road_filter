@@ -1,20 +1,15 @@
-#include "urban_road_filter/DataStructures.hpp"
-#include "starShapedSearch.cpp"
+#include "urban_road_filter/data_structures.hpp"
 
 /*Global variables.*/
 int channels = 64;                                    /* The number of channels of the LIDAR .*/
 std::string fixedFrame;                               /* Fixed Frame.*/
 std::string topicName;                                /* subscribed topic.*/
 bool x_zero_method, z_zero_method, star_shaped_method ; /*Methods of roadside detection*/
-bool blind_spots;                                     /*Vakfolt javító algoritmus.*/
 int xDirection;                                       /*A vakfolt levágás milyen irányú.*/
 float interval;                                       /*A LIDAR vertikális szögfelbontásának, elfogadott intervalluma.*/
 float curbHeight;                                     /*Becsült minimum szegély magasság.*/
 int curbPoints;                                       /*A pontok becsült száma, a szegélyen.*/
-float beamZone;                                       /*A vizsgált sugárzóna mérete.*/
-float angleFilter1;                                   /*X = 0 érték mellett, három pont által bezárt szög.*/
-float angleFilter2;                                   /*Z = 0 érték mellett, két vektor által bezárt szög.*/
-float angleFilter3;                                   /*Csaplár László kódjához szükséges. Sugár irányú határérték (fokban).*/
+float beamZone;                                       /*A vizsgált sugárzóna mérete.*/                                 
 float min_X, max_X, min_Y, max_Y, min_Z, max_Z;       /*A vizsgált terület méretei.*/
 
 bool polysimp_allow = true;                           /*polygon-eygszerűsítés engedélyezése*/
@@ -27,16 +22,13 @@ int ghostcount = 0;                                   /* segédváltozó az elav
 
 Detector::Detector(ros::NodeHandle* nh){
     /*Feliratkozás az adott topicra.*/
-    sub = nh->subscribe(topicName, 1, &Detector::filter,this);
+    sub = nh->subscribe(topicName, 1, &Detector::filtered,this);
     /*A szűrt adatok hírdetése.*/
     pub_road = nh->advertise<pcl::PCLPointCloud2>("road", 1);
     pub_high = nh->advertise<pcl::PCLPointCloud2>("curb", 1);
     pub_box = nh->advertise<pcl::PCLPointCloud2>("roi", 1); // ROI - region of interest
     pub_pobroad = nh->advertise<pcl::PCLPointCloud2>("road_probably", 1);
     pub_marker = nh->advertise<visualization_msgs::MarkerArray>("road_marker", 1);
-
-    /*Csaplár László kódjához szükséges.*/
-    beam_init();
 
     ROS_INFO("Ready");
 
@@ -69,31 +61,32 @@ void Detector::quickSort(std::vector<std::vector<Point3D>>& array3D, int arc, in
     }
 }
 
-void Detector::filter(const pcl::PointCloud<pcl::PointXYZI> &cloud){
+void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
     /*Segédváltozók, a "for" ciklusokhoz.*/
     int i, j, k, l;
 
     pcl::PointXYZI pt;                                           /*Egy db pont tárolásához szükséges.*/
+    auto cloud_filtered_Box = boost::make_shared<pcl::PointCloud<pcl::PointXYZI>>(cloud);          /*A vizsgált terület, összes pontja.*/
     pcl::PointCloud<pcl::PointXYZI> cloud_filtered_Road;         /*Szűrt pontok (járható úttest).*/
     pcl::PointCloud<pcl::PointXYZI> cloud_filtered_ProbablyRoad; /*Szűrt pontok (nem járható úttest).*/
     pcl::PointCloud<pcl::PointXYZI> cloud_filtered_High;         /*Szűrt pontok (nem úttest).*/
-    pcl::PointCloud<pcl::PointXYZI> cloud_filtered_Box;          /*A vizsgált terület, összes pontja.*/
 
-    /*A "cloud_filtered_Box" topic feltöltése a pontokkal.
-    Végigmegyünk az input felhőn, és azokat a pontokat, melyek megfelelnek a feltételeknek,
-    hozzáadjuk a "cloud_filtered_Box" topichoz.*/
-    for(auto point:cloud.points){
-        if (point.x >= min_X && point.x <= max_X &&
+
+    auto filterCondition = boost::make_shared<FilteringCondition<pcl::PointXYZI>>(
+        [=](const pcl::PointXYZI& point){
+            return point.x >= min_X && point.x <= max_X &&
             point.y >= min_Y && point.y <= max_Y &&
             point.z >= min_Z && point.z <= max_Z &&
-            point.x + point.y + point.z != 0){
-            pt = point;
-            cloud_filtered_Box.push_back(pt);
+            point.x + point.y + point.z != 0;
         }
-    }
+    );
+    pcl::ConditionalRemoval<pcl::PointXYZI> condition_removal;
+    condition_removal.setCondition(filterCondition);
+    condition_removal.setInputCloud(cloud_filtered_Box);
+    condition_removal.filter(*cloud_filtered_Box);
 
     /*A pontok darabszáma, a vizsgált területen.*/
-    size_t piece = cloud_filtered_Box.points.size();
+    size_t piece = cloud_filtered_Box->points.size();
 
     /*Minimum 30 pont legyen a vizsgált területen, különben programhibák lesznek.
     Illetve nincs is értelme vizsgálni ilyen kevés pontot.*/
@@ -127,7 +120,7 @@ void Detector::filter(const pcl::PointCloud<pcl::PointXYZI> &cloud){
     /*A 2D tömb feltöltése.*/
     for (i = 0; i < piece; i++){
         /*--- Az első 4 oszlop feltöltése. ---*/
-        array2D[i].p = cloud_filtered_Box.points[i];
+        array2D[i].p = cloud_filtered_Box->points[i];
         array2D[i].d = sqrt(pow(array2D[i].p.x, 2) + pow(array2D[i].p.y, 2) + pow(array2D[i].p.z, 2));
 
         /*--- Az 5. oszlop feltöltése. ---*/
@@ -179,10 +172,9 @@ void Detector::filter(const pcl::PointCloud<pcl::PointXYZI> &cloud){
         }
     }
      /*Csaplár László kódjának meghívása és a szükséges határérték beállítása.*/
-    if (star_shaped_method ){
-        slope_param = angleFilter3 * (M_PI / 180);
+    if (star_shaped_method )
         Detector::starShapedSearch(array2D);
-    }
+    
 
     /*A szögfelbontások növekvő sorrendbe rendezése.
     A legkisebb lesz az első körív és így tovább.*/
@@ -270,416 +262,20 @@ void Detector::filter(const pcl::PointCloud<pcl::PointXYZI> &cloud){
         }
     }
 
-    /*A lefoglalt terület felszabadítása.*/
+    if(x_zero_method)
+        Detector::xZeroMethod(array3D,index,indexArray);
+    if(z_zero_method)
+        Detector::zZeroMethod(array3D,index,indexArray);
 
-    /*-- 1. lépés: A NEM út pontok szűrése. --*/
-    int p2, p3; /*p2, p3 - A három vizsgált pontból, a második és a harmadik.*/
-
-    /*
-    --> alpha - A három pont és a két vektor által bezárt szög.
-    --> x1, x2, x3 - A három pont által bezárt háromszög oldalainak hossza.
-    --> curbPoints - A pontok becsült száma, a szegélyen.
-    --> va1, va2, vb1, vb2 - A két vektor.
-    --> max1, max2 - Nem csak a szöget, hanem a magasságot is vizsgálni kell.
-    --> d - A két szélső pont közötti távolság. A LIDAR forgása és a körív szakadások miatt.
-        d - Ez a változó a program későbbi részein is felhasználásra kerül.
-    */
-    float alpha, x1, x2, x3, va1, va2, vb1, vb2, max1, max2, d;
-
-    /*Az összes kör vizsgálata.*/
-    for (i = 0; i < index; i++)
-    {
-        if (x_zero_method)
-        {
-            /*Új Y értékek beállítása, X = 0 értékek mellett.*/
-            for (j = 1; j < indexArray[i]; j++)
-            {
-                array3D[i][j].newY = array3D[i][j-1].newY + 0.0100;
-            }
-
-            /*A kör pontjainak vizsgálata. X = 0 módszer.*/
-            for (j = curbPoints; j <= (indexArray[i] - 1) - curbPoints; j++)
-            {
-                p2 = j + curbPoints / 2;
-                p3 = j + curbPoints;
-
-                d = sqrt(
-                    pow(array3D[i][p3].p.x - array3D[i][j].p.x , 2) +
-                    pow(array3D[i][p3].p.y  - array3D[i][j].p.y , 2));
-
-                /*A távolság, 5 méternél kisebb legyen.*/
-                if (d < 5.0000)
-                {
-                    x1 = sqrt(
-                        pow(array3D[i][p2].newY  - array3D[i][j].newY , 2) +
-                        pow(array3D[i][p2].p.z - array3D[i][j].p.z , 2));
-                    x2 = sqrt(
-                        pow(array3D[i][p3].newY - array3D[i][p2].newY, 2) +
-                        pow(array3D[i][p3].p.z  - array3D[i][p2].p.z , 2));
-                    x3 = sqrt(
-                        pow(array3D[i][p3].newY  - array3D[i][j].newY , 2) +
-                        pow(array3D[i][p3].p.z  - array3D[i][j].p.z , 2));
-
-                    bracket = (pow(x3, 2) - pow(x1, 2) - pow(x2, 2)) / (-2 * x1 * x2);
-                    if (bracket < -1)
-                        bracket = -1;
-                    else if (bracket > 1)
-                        bracket = 1;
-
-                    alpha = acos(bracket) * 180 / M_PI;
-
-                    /*Feltétel és csoporthoz adás.*/
-                    if (alpha <= angleFilter1 &&
-                        (abs(array3D[i][j].p.z  - array3D[i][p2].p.z ) >= curbHeight ||
-                        abs(array3D[i][p3].p.z  - array3D[i][p2].p.z ) >= curbHeight) &&
-                        abs(array3D[i][j].p.z  - array3D[i][p3].p.z ) >= 0.05)
-                    {
-                        array3D[i][p2].isCurbPoint  = 2;
-                    }
-                }
-            }
-        }
-
-        if (z_zero_method)
-        {
-            /*A kör pontjainak vizsgálata. Z = 0 módszer.*/
-            for (j = curbPoints; j <= (indexArray[i] - 1) - curbPoints; j++)
-            {
-                d = sqrt(
-                    pow(array3D[i][j+curbPoints].p.x - array3D[i][j-curbPoints].p.x, 2) +
-                    pow(array3D[i][j+curbPoints].p.y - array3D[i][j-curbPoints].p.y, 2));
-
-                /*A távolság, 5 méternél kisebb legyen.*/
-                if (d < 5.0000)
-                {
-                    /*Kezdeti értékek beállítása.*/
-                    max1 = max2 = abs(array3D[i][j].p.z);
-                    va1 = va2 = vb1 = vb2 = 0;
-
-                    /*Az 'a' vektor és a legnagyobb magasság beállítása.*/
-                    for (k = j - 1; k >= j - curbPoints; k--)
-                    {
-                        va1 = va1 + (array3D[i][k].p.x - array3D[i][j].p.x);
-                        va2 = va2 + (array3D[i][k].p.y - array3D[i][j].p.y);
-                        if (abs(array3D[i][k].p.z) > max1)
-                            max1 = abs(array3D[i][k].p.z);
-                    }
-
-                    /*A 'b' vektor és a legnagyobb magasság beállítása.*/
-                    for (k = j + 1; k <= j + curbPoints; k++)
-                    {
-                        vb1 = vb1 + (array3D[i][k].p.x - array3D[i][j].p.x );
-                        vb2 = vb2 + (array3D[i][k].p.y  - array3D[i][j].p.y );
-                        if (abs(array3D[i][k].p.z ) > max2)
-                            max2 = abs(array3D[i][k].p.z);
-                    }
-
-                    va1 = (1 / (float)curbPoints) * va1;
-                    va2 = (1 / (float)curbPoints) * va2;
-                    vb1 = (1 / (float)curbPoints) * vb1;
-                    vb2 = (1 / (float)curbPoints) * vb2;
-
-                    bracket = (va1 * vb1 + va2 * vb2) / (sqrt(pow(va1, 2) + pow(va2, 2)) * sqrt(pow(vb1, 2) + pow(vb2, 2)));
-                    if (bracket < -1)
-                        bracket = -1;
-                    else if (bracket > 1)
-                        bracket = 1;
-
-                    alpha = acos(bracket) * 180 / M_PI;
-
-                    /*Feltétel és csoporthoz adás.*/
-                    if (alpha <= angleFilter2 &&
-                        (max1 - abs(array3D[i][j].p.z ) >= curbHeight ||
-                        max2 - abs(array3D[i][j].p.z) >= curbHeight) &&
-                        abs(max1 - max2) >= 0.05)
-                    {
-                        array3D[i][j].isCurbPoint = 2;
-                    }
-                }
-            }
-        }
-    }
+    float d;
 
     /*-- 2. lépés: Az út pontok szűrése. --*/
     /*A tömb elemeinek rendezése oly módon, hogy körönként, a szögeknek megfelelő sorrendben legyenek.*/
     for (i = 0; i < index; i++){
         quickSort(array3D, i, 0, indexArray[i] - 1);
     }
-    /*Vakfolt keresés:
-    Megvizsgáljuk a második körvonalat. (Az elsővel pontatlan.)
-    Főleg a [90°-180° --- 180°-270°] tartomány és a [0°-90° --- 270°-360°] tartomány a lényeg, az autó két oldalán.
-    Mind a kettő tartományban keresünk 2db magaspontot. Ha az adott tartományban az első körvonalon van két magaspont,
-    a közte lévő terület nagy valószínűséggel egy vakfolt lesz.*/
-    float q1 = 0, q2 = 180, q3 = 180, q4 = 360; /*A kör négy része. (1. 2. 3. 4. negyed.)*/
-    int c1 = -1, c2 = -1, c3 = -1, c4 = -1;     /*A talált pontok ID-ja az első körvonalon.*/
-
-    if (blind_spots)
-    {
-        for (i = 0; i < indexArray[1]; i++)
-        {
-            if(array3D[1][i].isCurbPoint==2)
-            {
-                if (array3D[1][i].alpha >= 0 && array3D[1][i].alpha < 90)
-                {
-                    if (array3D[1][i].alpha > q1)
-                    {
-                        q1 = array3D[1][i].alpha;
-                        c1 = i;
-                    }
-                }
-                else if (array3D[1][i].alpha >= 90 && array3D[1][i].alpha < 180)
-                {
-                    if (array3D[1][i].alpha < q2)
-                    {
-                        q2 = array3D[1][i].alpha;
-                        c2 = i;
-                    }
-                }
-                else if (array3D[1][i].alpha >= 180 && array3D[1][i].alpha < 270)
-                {
-                    if (array3D[1][i].alpha > q3)
-                    {
-                        q3 = array3D[1][i].alpha;
-                        c3 = i;
-                    }
-                }
-                else
-                {
-                    if (array3D[1][i].alpha < q4)
-                    {
-                        q4 = array3D[1][i].alpha;
-                        c4 = i;
-                    }
-                }
-            }
-        }
-    }
-
-    float arcDistance;   /*Körív mérete, a megadott foknál. Fontos minden körön, ugyanakkora körív méretet vizsgálni.*/
-    int notRoad;         /*Ha az adott köríven, az adott szakaszon, található magaspont, akkor 1-es értéket vesz fel, amúgy 0-át.*/
-    int blindSpot;       /*Vakfoltok az autó mellett.*/
-    float currentDegree; /*Az aktuális köríven, a szög nagysága.*/
-
-    /*A körív méret meghatározása.*/
-    arcDistance = ((maxDistance[0] * M_PI) / 180) * beamZone;
-
-    /*0°-tól 360° - beamZone-ig.*/
-    for (i = 0; i <= 360 - beamZone; i++)
-    {
-        blindSpot = 0;
-
-        if (blind_spots)
-        {
-            /*Ha ezek a feltételek teljesülnek, akkor egy vakfoltba léptünk és itt nem vizsgálódunk.*/
-            if (xDirection == 0)
-            {
-                /*+-X irányba is vizsgáljuk a pontokat.*/
-                if ((q1 != 0 && q4 != 360 && (i <= q1 || i >= q4)) || (q2 != 180 && q3 != 180 && i >= q2 && i <= q3))
-                {
-                    blindSpot = 1;
-                }
-            }
-            else if (xDirection == 1)
-            {
-                /*+X irányba vizsgáljuk a pontokat.*/
-                if ((q2 != 180 && i >= q2 && i <= 270) || (q1 != 0 && (i <= q1 || i >= 270)))
-                {
-                    blindSpot = 1;
-                }
-            }
-            else
-            {
-                /*-X vizsgáljuk a pontokat.*/
-                if ((q4 != 360 && (i >= q4 || i <= 90)) || (q3 != 180 && i <= q3 && i >= 90))
-                {
-                    blindSpot = 1;
-                }
-            }
-        }
-
-        if (blindSpot == 0)
-        {
-            /*Alap beállítás, hogy az adott szakaszon nincs magaspont.*/
-            notRoad = 0;
-
-            /*Az első kör adott szakaszának vizsgálata.*/
-            for (j = 0; array3D[0][j].alpha <= i + beamZone && j < indexArray[0]; j++)
-            {
-                if (array3D[0][j].alpha >= i)
-                {
-                    /*Nem vizsgáljuk tovább az adott szakaszt, ha találunk benne magaspontot.*/
-                    if (array3D[0][j].isCurbPoint == 2)
-                    {
-                        notRoad = 1;
-                        break;
-                    }
-                }
-            }
-
-            /*Ha nem találtunk az első kör, adott szakaszán magaspontot, továbbléphetünk a következő körre.*/
-            if (notRoad == 0)
-            {
-                /*Az első kör szakaszát elfogadjuk.*/
-                for (j = 0; array3D[0][j].alpha <= i + beamZone && j < indexArray[0]; j++)
-                {
-                    if (array3D[0][j].alpha >= i)
-                    {
-                        array3D[0][j].isCurbPoint = 1;
-                    }
-                }
-
-                /*A további körök vizsgálata.*/
-                for (k = 1; k < index; k++)
-                {
-                    /*Új szöget kell meghatározni, hogy a távolabbi körvonalakon is, ugyanakkora körív hosszt vizsgáljunk.*/
-                    if (i == 360 - beamZone)
-                    {
-                        currentDegree = 360;
-                    }
-                    else
-                    {
-                        currentDegree = i + arcDistance / ((maxDistance[k] * M_PI) / 180);
-                    }
-
-                    /*Az új kör pontjait vizsgáljuk.*/
-                    for (l = 0; array3D[k][l].alpha <= currentDegree && l < indexArray[k]; l++)
-                    {
-                        if (array3D[k][l].alpha >= i)
-                        {
-                            /*Nem vizsgáljuk tovább az adott szakaszt, ha találunk benne magaspontot.*/
-                            if (array3D[k][l].isCurbPoint == 2)
-                            {
-                                notRoad = 1;
-                                break;
-                            }
-                        }
-                    }
-
-                    /*A többi kört nem vizsgáljuk, ha a sugár, elakadt egy magasponton.*/
-                    if (notRoad == 1)
-                        break;
-
-                    /*Egyébként, elfogadjuk az adott kör, adott szakaszát.*/
-                    for (l = 0; array3D[k][l].alpha <= currentDegree && l < indexArray[k]; l++)
-                    {
-                        if (array3D[k][l].alpha >= i)
-                        {
-                            array3D[k][l].isCurbPoint = 1;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    /*Ugyanaz, mint az előző, csak itt 360°-tól 0° + beamZone-ig vizsgáljuk a pontokat.*/
-    for (i = 360; i >= 0 + beamZone; --i)
-    {
-        blindSpot = 0;
-
-        if (blind_spots)
-        {
-            /*Ha ezek a feltételek teljesülnek, akkor egy vakfoltba léptünk és itt nem vizsgálódunk.*/
-            if (xDirection == 0)
-            {
-                /*+-X irányba is vizsgáljuk a pontokat.*/
-                if ((q1 != 0 && q4 != 360 && (i <= q1 || i >= q4)) || (q2 != 180 && q3 != 180 && i >= q2 && i <= q3))
-                {
-                    blindSpot = 1;
-                }
-            }
-            else if (xDirection == 1)
-            {
-                /*+X irányba vizsgáljuk a pontokat.*/
-                if ((q2 != 180 && i >= q2 && i <= 270) || (q1 != 0 && (i <= q1 || i >= 270)))
-                {
-                    blindSpot = 1;
-                }
-            }
-            else
-            {
-                /*-X vizsgáljuk a pontokat.*/
-                if ((q4 != 360 && (i >= q4 || i <= 90)) || (q3 != 180 && i <= q3 && i >= 90))
-                {
-                    blindSpot = 1;
-                }
-            }
-        }
-
-        if (blindSpot == 0)
-        {
-            /*Alap beállítás, hogy az adott szakaszon nincs magaspont.*/
-            notRoad = 0;
-
-            /*Az első kör adott szakaszának vizsgálata.*/
-            for (j = indexArray[0] - 1; array3D[0][j].alpha >= i - beamZone && j >= 0; --j)
-            {
-                if (array3D[0][j].alpha <= i)
-                {
-                    /*Nem vizsgáljuk tovább az adott szakaszt, ha találunk benne magaspontot.*/
-                    if (array3D[0][j].isCurbPoint == 2)
-                    {
-                        notRoad = 1;
-                        break;
-                    }
-                }
-            }
-
-            /*Ha nem találtunk az első kör, adott szakaszán magaspontot, továbbléphetünk a következő körre.*/
-            if (notRoad == 0)
-            {
-                /*Az első kör szakaszát elfogadjuk.*/
-                for (j = indexArray[0] - 1; array3D[0][j].alpha >= i - beamZone && j >= 0; --j)
-                {
-                    if (array3D[0][j].alpha <= i)
-                    {
-                        array3D[0][j].isCurbPoint = 1;
-                    }
-                }
-
-                /*A további körök vizsgálata.*/
-                for (k = 1; k < index; k++)
-                {
-                    /*Új szöget kell meghatározni, hogy a távolabbi körvonalakon is, ugyanakkora körív hosszt vizsgáljunk.*/
-                    if (i == 0 + beamZone)
-                    {
-                        currentDegree = 0;
-                    }
-                    else
-                    {
-                        currentDegree = i - arcDistance / ((maxDistance[k] * M_PI) / 180);
-                    }
-
-                    /*Az új kör pontjait vizsgáljuk.*/
-                    for (l = indexArray[k] - 1; array3D[k][l].alpha >= currentDegree && l >= 0; --l)
-                    {
-                        if (array3D[k][l].alpha <= i)
-                        {
-                            /*Nem vizsgáljuk tovább az adott szakaszt, ha találunk benne magaspontot.*/
-                            if (array3D[k][l].isCurbPoint == 2)
-                            {
-                                notRoad = 1;
-                                break;
-                            }
-                        }
-                    }
-
-                    /*A többi kört nem vizsgáljuk, ha a sugár, elakadt egy magasponton.*/
-                    if (notRoad == 1)
-                        break;
-
-                    /*Egyébként, elfogadjuk az adott kör, adott szakaszát.*/
-                    for (l = indexArray[k] - 1; array3D[k][l].alpha >= currentDegree && l >= 0; --l)
-                    {
-                        if (array3D[k][l].alpha <= i)
-                        {
-                            array3D[k][l].isCurbPoint = 1;
-                        }
-                    }
-                }
-            }
-        }
-    }
+    /*Vakfolt keresés*/
+    Detector::blindSpots(array3D,index,indexArray,maxDistance);
 
     /*-- 3. lépés: A marker pontjainak keresése. Adott fokban a legtávolabbi zöld pont. --*/
     /*A marker pontjait tartalmazza. Az első három oszlopban az X - Y - Z koordinátát,
@@ -1042,7 +638,7 @@ void Detector::filter(const pcl::PointCloud<pcl::PointXYZI> &cloud){
     cloud_filtered_Road.header = cloud.header;
     cloud_filtered_ProbablyRoad.header = cloud.header;
     cloud_filtered_High.header = cloud.header;
-    cloud_filtered_Box.header = cloud.header;
+    cloud_filtered_Box->header = cloud.header;
 
     /*Publish.*/
     pub_road.publish(cloud_filtered_Road); /*Szűrt pontok (úttest).*/
@@ -1050,149 +646,3 @@ void Detector::filter(const pcl::PointCloud<pcl::PointXYZI> &cloud){
     pub_box.publish(cloud_filtered_Box);  /*A vizsgált terület, összes pontja.*/
     pub_pobroad.publish(cloud_filtered_ProbablyRoad);
 }
-
-void Detector::starShapedSearch(std::vector<Point2D> &array2D){
-    /*--- A 6. oszlop feltöltése. ---*/
-    /*Csaplár László kódja által, magaspontoknak jelölt pontok felvétele a 2D tömbbe.*/
-    starshaped(array2D);
-}
-
-void Detector::xZeroMethod(std::vector<std::vector<Point3D>>& array3D,int index,int* indexArray){
-    /*-- 1. lépés: A NEM út pontok szűrése. --*/
-    int p2, p3; /*p2, p3 - A három vizsgált pontból, a második és a harmadik.*/
-
-    /*
-    --> alpha - A három pont és a két vektor által bezárt szög.
-    --> x1, x2, x3 - A három pont által bezárt háromszög oldalainak hossza.
-    --> curbPoints - A pontok becsült száma, a szegélyen.
-    --> va1, va2, vb1, vb2 - A két vektor.
-    --> max1, max2 - Nem csak a szöget, hanem a magasságot is vizsgálni kell.
-    --> d - A két szélső pont közötti távolság. A LIDAR forgása és a körív szakadások miatt.
-        d - Ez a változó a program későbbi részein is felhasználásra kerül.
-    */
-    float alpha, x1, x2, x3, va1, va2, vb1, vb2, max1, max2, d, bracket;
-    for (size_t i = 0; i < index; i++)
-    {
-        /*Új Y értékek beállítása, X = 0 értékek mellett.*/
-        for (size_t j = 1; j < indexArray[i]; j++)
-        {
-            array3D[i][j].newY = array3D[i][j-1].newY + 0.0100;
-        }
-
-        /*A kör pontjainak vizsgálata. X = 0 módszer.*/
-        for (size_t j = curbPoints; j <= (indexArray[i] - 1) - curbPoints; j++)
-        {
-            p2 = j + curbPoints / 2;
-            p3 = j + curbPoints;
-
-            d = sqrt(
-                pow(array3D[i][p3].p.x - array3D[i][j].p.x , 2) +
-                pow(array3D[i][p3].p.y  - array3D[i][j].p.y , 2));
-
-            /*A távolság, 5 méternél kisebb legyen.*/
-            if (d < 5.0000)
-            {
-                x1 = sqrt(
-                    pow(array3D[i][p2].newY  - array3D[i][j].newY , 2) +
-                    pow(array3D[i][p2].p.z - array3D[i][j].p.z , 2));
-                x2 = sqrt(
-                    pow(array3D[i][p3].newY - array3D[i][p2].newY, 2) +
-                    pow(array3D[i][p3].p.z  - array3D[i][p2].p.z , 2));
-                x3 = sqrt(
-                    pow(array3D[i][p3].newY  - array3D[i][j].newY , 2) +
-                    pow(array3D[i][p3].p.z  - array3D[i][j].p.z , 2));
-
-                bracket = (pow(x3, 2) - pow(x1, 2) - pow(x2, 2)) / (-2 * x1 * x2);
-                if (bracket < -1)
-                    bracket = -1;
-                else if (bracket > 1)
-                    bracket = 1;
-
-                alpha = acos(bracket) * 180 / M_PI;
-
-                /*Feltétel és csoporthoz adás.*/
-                if (alpha <= angleFilter1 &&
-                    (abs(array3D[i][j].p.z  - array3D[i][p2].p.z ) >= curbHeight ||
-                    abs(array3D[i][p3].p.z  - array3D[i][p2].p.z ) >= curbHeight) &&
-                    abs(array3D[i][j].p.z  - array3D[i][p3].p.z ) >= 0.05)
-                {
-                    array3D[i][p2].isCurbPoint  = 2;
-                }
-            }
-        }
-    }
-}
-
-void Detector::zZeroMethod(std::vector<std::vector<Point3D>>& array3D,int index,int* indexArray){
-    /*-- 1. lépés: A NEM út pontok szűrése. --*/
-    int p2, p3; /*p2, p3 - A három vizsgált pontból, a második és a harmadik.*/
-
-    /*
-    --> alpha - A három pont és a két vektor által bezárt szög.
-    --> x1, x2, x3 - A három pont által bezárt háromszög oldalainak hossza.
-    --> curbPoints - A pontok becsült száma, a szegélyen.
-    --> va1, va2, vb1, vb2 - A két vektor.
-    --> max1, max2 - Nem csak a szöget, hanem a magasságot is vizsgálni kell.
-    --> d - A két szélső pont közötti távolság. A LIDAR forgása és a körív szakadások miatt.
-        d - Ez a változó a program későbbi részein is felhasználásra kerül.
-    */
-    float alpha, x1, x2, x3, va1, va2, vb1, vb2, max1, max2, d, bracket;
-    for (size_t i = 0; i < index; i++){
-    /*A kör pontjainak vizsgálata. Z = 0 módszer.*/
-            for (size_t j = curbPoints; j <= (indexArray[i] - 1) - curbPoints; j++)
-            {
-                d = sqrt(
-                    pow(array3D[i][j+curbPoints].p.x - array3D[i][j-curbPoints].p.x, 2) +
-                    pow(array3D[i][j+curbPoints].p.y - array3D[i][j-curbPoints].p.y, 2));
-
-                /*A távolság, 5 méternél kisebb legyen.*/
-                if (d < 5.0000)
-                {
-                    /*Kezdeti értékek beállítása.*/
-                    max1 = max2 = abs(array3D[i][j].p.z);
-                    va1 = va2 = vb1 = vb2 = 0;
-
-                    /*Az 'a' vektor és a legnagyobb magasság beállítása.*/
-                    for (size_t k = j - 1; k >= j - curbPoints; k--)
-                    {
-                        va1 = va1 + (array3D[i][k].p.x - array3D[i][j].p.x);
-                        va2 = va2 + (array3D[i][k].p.y - array3D[i][j].p.y);
-                        if (abs(array3D[i][k].p.z) > max1)
-                            max1 = abs(array3D[i][k].p.z);
-                    }
-
-                    /*A 'b' vektor és a legnagyobb magasság beállítása.*/
-                    for (size_t k = j + 1; k <= j + curbPoints; k++)
-                    {
-                        vb1 = vb1 + (array3D[i][k].p.x - array3D[i][j].p.x );
-                        vb2 = vb2 + (array3D[i][k].p.y  - array3D[i][j].p.y );
-                        if (abs(array3D[i][k].p.z ) > max2)
-                            max2 = abs(array3D[i][k].p.z);
-                    }
-
-                    va1 = (1 / (float)curbPoints) * va1;
-                    va2 = (1 / (float)curbPoints) * va2;
-                    vb1 = (1 / (float)curbPoints) * vb1;
-                    vb2 = (1 / (float)curbPoints) * vb2;
-
-                    bracket = (va1 * vb1 + va2 * vb2) / (sqrt(pow(va1, 2) + pow(va2, 2)) * sqrt(pow(vb1, 2) + pow(vb2, 2)));
-                    if (bracket < -1)
-                        bracket = -1;
-                    else if (bracket > 1)
-                        bracket = 1;
-
-                    alpha = acos(bracket) * 180 / M_PI;
-
-                    /*Feltétel és csoporthoz adás.*/
-                    if (alpha <= angleFilter2 &&
-                        (max1 - abs(array3D[i][j].p.z ) >= curbHeight ||
-                        max2 - abs(array3D[i][j].p.z) >= curbHeight) &&
-                        abs(max1 - max2) >= 0.05)
-                    {
-                        array3D[i][j].isCurbPoint = 2;
-                    }
-                }
-            }
-    }
-}
-/*Ez a függvény végzi a szűrést.*/
