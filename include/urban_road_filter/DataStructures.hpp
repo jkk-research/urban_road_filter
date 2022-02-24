@@ -41,8 +41,24 @@ struct Point2D{
     float alpha;
     short isCurbPoint;
 };
+
 struct Point3D:public Point2D{
     float newY;
+};
+
+struct polar    //polar-coordinate struct for the points
+{
+    int id;     //original ID of point (from input cloud)
+    float r;    //radial coordinate
+    float fi;   //angular coordinate (ccw angle from x-axis)
+};
+
+struct box      //struct for detection beams
+{
+    std::vector<polar> p; //points within the beam's area
+    box *l, *r;           //pointer to adjacent beams (currently not used)
+    bool yx;              //whether it is aligned more with the y-axis (than the x-axis)
+    float o, d;           //internal parameters (trigonometry)
 };
 
 extern std::string fixedFrame;                               /* Fixed Frame.*/

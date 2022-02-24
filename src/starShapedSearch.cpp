@@ -2,35 +2,15 @@
     (by László Csaplár)
 
     description: a complementary algorithm for roadside detection, part of the "urban_road_filter" package
-    input:  const pcl::PointCloud<pcl::PointXYZI> [see: void callback(...)]
-    output: (non-return) std::vector<int> padkaIDs - list of IDs of the points (one per beam) detected as roadside
 */
 
 int rep = 360;                  //number of detection beams (how many parts/sectors will the pointcloud be divided along the angular direction -> one beam per sector)
 float width = 0.2;              //width of beams
-float rmin = 2.0;               //minimum radius of filter (keep points only farther than this)
-float rmax = 60.0;              //maximum radius of filter (keep points only nearer than this)
 float Kfi;                      //internal parameter, for assigning the points to their corresponding sectors ( = 1 / [2pi/rep] = 1 / [angle between neighboring beams] )
 float slope_param;              //"slope" parameter for edge detection (given by 2 points, in radial direction/plane)
 int dmin_param;                 //(see below)
 float kdev_param;               //(see below)
 float kdist_param;              //(see below)
-std::vector<int> padkaIDs(rep); //original ID of points marked as roadside (from input cloud)
-
-struct polar    //polar-coordinate struct for the points
-{
-    int id;     //original ID of point (from input cloud)
-    float r;    //radial coordinate
-    float fi;   //angular coordinate (ccw angle from x-axis)
-};
-
-struct box      //struct for detection beams
-{
-    std::vector<polar> p; //points within the beam's area
-    box *l, *r;           //pointer to adjacent beams (currently not used)
-    bool yx;              //whether it is aligned more with the y-axis (than the x-axis)
-    float o, d;           //internal parameters (trigonometry)
-};
 
 std::vector<box> beams(rep);        //beams
 std::vector<box *> beamp(rep + 1);  //pointers to the beams (+1 -> 0 AND 360)
@@ -79,7 +59,7 @@ void beam_init()    //beam initialization
     Kfi = rep / (2 * M_PI); //should be 2pi/rep, but then we would have to divide by it every time - using division only once and then multiplying later on should be somewhat faster (?)
 }
 
-void threadfunc(const int tid, const pcl::PointCloud<pcl::PointXYZI> *cloud) //beam algorithm (filtering, sorting, edge-/roadside detection) - input: beam ID (ordinal position/"which one" by angle), pointcloud
+void beamfunc(const int tid, std::vector<Point2D> &array2D) //beam algorithm (filtering, sorting, edge-/roadside detection) - input: beam ID (ordinal position/"which one" by angle), pointcloud (as std::vector<Point2D>, see: 'array2D' of 'lidarSegmentation')
 {
     int i = 0, s = beams[tid].p.size(); //loop variables
     float c;                            //temporary variable to simplify things
@@ -88,8 +68,8 @@ void threadfunc(const int tid, const pcl::PointCloud<pcl::PointXYZI> *cloud) //b
     {
         while (i < s)   //iterating through points in the current sector (instead of a for loop - since 's' is not constant and 'i' needs to be incremented conditionally)
         {
-            c = abs(beams[tid].d * cloud->points[beams[tid].p[i].id].y);                        //x-coordinate of the beam's centerline at the point (at the "height" of its y-coordinate)
-            if ((c - beams[tid].o) < cloud->points[beams[tid].p[i].id].x < (c + beams[tid].o))  //whether it is inside the beam (by checking only x values on the line/"height" of the point's y-coordinate: whether the [x-coordinate of the] point falls between the [x-coordinates of the] two sides/borders of the beam
+            c = abs(beams[tid].d * array2D[beams[tid].p[i].id].p.y);                        //x-coordinate of the beam's centerline at the point (at the "height" of its y-coordinate)
+            if ((c - beams[tid].o) < array2D[beams[tid].p[i].id].p.x < (c + beams[tid].o))  //whether it is inside the beam (by checking only x values on the line/"height" of the point's y-coordinate: whether the [x-coordinate of the] point falls between the [x-coordinates of the] two sides/borders of the beam
             {
                 i++;    //okay, next one
             }
@@ -104,8 +84,8 @@ void threadfunc(const int tid, const pcl::PointCloud<pcl::PointXYZI> *cloud) //b
     {
         while (i < s)
         {
-            c = abs(beams[tid].d * cloud->points[beams[tid].p[i].id].x);
-            if ((c - beams[tid].o) < cloud->points[beams[tid].p[i].id].y < (c + beams[tid].o))
+            c = abs(beams[tid].d * array2D[beams[tid].p[i].id].p.x);
+            if ((c - beams[tid].o) < array2D[beams[tid].p[i].id].p.y < (c + beams[tid].o))
             {
                 i++;
             }
@@ -129,14 +109,14 @@ void threadfunc(const int tid, const pcl::PointCloud<pcl::PointXYZI> *cloud) //b
             float avg = 0, dev = 0, nan = 0;            //average value and absolute average deviation of the slope for adaptive detection + handling Not-a-Number values
             float ax, ay, bx, by, slp;                  //temporary variables (points 'a' and 'b' + slope)
             bx = beams[tid].p[0].r;                     //x = r-coordinate of the first point (radial position)
-            by = cloud->points[beams[tid].p[0].id].z;   //y = z-coordinate of the first point (height)
+            by = array2D[beams[tid].p[0].id].p.z;   //y = z-coordinate of the first point (height)
 
             for (int i = 1; i < s; i++) //edge detection based on the slope between point a and b
             {                           //updating points (a=b, b=next)
                 ax = bx;
                 bx = beams[tid].p[i].r;
                 ay = by;
-                by = cloud->points[beams[tid].p[i].id].z;
+                by = array2D[beams[tid].p[i].id].p.z;
                 slp = slope(ax, ay, bx, by);
 
                 if (isnan(slp))
@@ -154,8 +134,8 @@ void threadfunc(const int tid, const pcl::PointCloud<pcl::PointXYZI> *cloud) //b
                         (i > dmin && (slp * slp - avg * avg) * kdev * ((bx - ax) * kdist) > dev)    //if sufficient number of points: does the (weighted) "squared difference" from average - corrected with... 
                     )                                                                               //... the (weighted) distance of adjacent points - exceed the average absolute deviation?
                 {
-                    padkaIDs.push_back(beams[tid].p[i].id); //original ID of point gets registered as roadside
-                    break;                                  //(the roadside is found, time to break the loop)
+                    array2D[beams[tid].p[i].id].isCurbPoint = 2;    //the point in the 2D array gets marked as curbpoint
+                    break;                                          //(the roadside is found, time to break the loop)
                 }
             }
         }
@@ -163,17 +143,17 @@ void threadfunc(const int tid, const pcl::PointCloud<pcl::PointXYZI> *cloud) //b
     beams[tid].p.clear();   //evaluation done, the points are no longer needed
 }
 
-void callback(const pcl::PointCloud<pcl::PointXYZI> &cloud)  //entry point to the code, everything gets called here (except for initialization - that needs to be called separately, at the start of the program - "beam_init()")
+void starshaped(std::vector<Point2D> &array2D)  //entry point to the code, everything gets called here (except for initialization - that needs to be called separately, at the start of the program - "beam_init()")
 {
-    beamp.push_back(&beams[0]); //initializing "360 deg = 0 deg" pointer
-    int f, s = cloud.size();    //temporary variables
-    float r, fi;                //polar coordinates
+    beamp.push_back(&beams[0]);     //initializing "360 deg = 0 deg" pointer
+    int f, s = array2D.size();   //temporary variables
+    float r, fi;                    //polar coordinates
 
     for (int i = 0; i < s; i++) //points to polar coordinate-system + sorting into sectors
     {
-        r = sqrt(cloud.points[i].x * cloud.points[i].x + cloud.points[i].y * cloud.points[i].y);    //r = sqRoot(x^2+y^2) = distance of point from sensor
+        r = sqrt(array2D[i].p.x * array2D[i].p.x + array2D[i].p.y * array2D[i].p.y);    //r = sqRoot(x^2+y^2) = distance of point from sensor
 
-        fi = atan2(cloud.points[i].y, cloud.points[i].x);   //angular position of point
+        fi = atan2(array2D[i].p.y, array2D[i].p.x);   //angular position of point
 
         if (fi < 0)
             fi += 2 * M_PI;     //handling negative values (-180...+180 -> 0...360)
@@ -183,10 +163,9 @@ void callback(const pcl::PointCloud<pcl::PointXYZI> &cloud)  //entry point to th
         beamp[f]->p.push_back(polar{i, r, fi}); //adding the point to the 'f'-th beam (still unfiltered)
     }
     beamp.pop_back();   //removing pointer (to prevent "double free" error)
-    padkaIDs.clear();   //clearing previous data
 
     for (int i = 0; i < rep; i++)   //for every beam...
     {
-        threadfunc(i, &cloud);  //the heart of the code (beam algorithm)
+        beamfunc(i, array2D);  //the heart of the starshaped method (beam algorithm)
     }
 }

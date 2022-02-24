@@ -100,11 +100,7 @@ void Detector::filter(const pcl::PointCloud<pcl::PointXYZI> &cloud){
     if (piece < 30){
         return;
     }
-     /*Csaplár László kódjának meghívása és a szükséges határérték beállítása.*/
-    if (star_shaped_method ){
-        slope_param = angleFilter3 * (M_PI / 180);
-        callback(cloud_filtered_Box);
-    }
+    
     /*
     2D tömb:
     - A pontok értékei: (0: X, 1: Y, 2: Z),
@@ -182,8 +178,11 @@ void Detector::filter(const pcl::PointCloud<pcl::PointXYZI> &cloud){
             }
         }
     }
-    if(star_shaped_method)
+     /*Csaplár László kódjának meghívása és a szükséges határérték beállítása.*/
+    if (star_shaped_method ){
+        slope_param = angleFilter3 * (M_PI / 180);
         Detector::starShapedSearch(array2D);
+    }
 
     /*A szögfelbontások növekvő sorrendbe rendezése.
     A legkisebb lesz az első körív és így tovább.*/
@@ -1052,14 +1051,10 @@ void Detector::filter(const pcl::PointCloud<pcl::PointXYZI> &cloud){
     pub_pobroad.publish(cloud_filtered_ProbablyRoad);
 }
 
-void Detector::starShapedSearch(std::vector<Point2D>& array2D){
+void Detector::starShapedSearch(std::vector<Point2D> &array2D){
     /*--- A 6. oszlop feltöltése. ---*/
     /*Csaplár László kódja által, magaspontoknak jelölt pontok felvétele a 2D tömbbe.*/
-    if (star_shaped_method ){
-        for (size_t i = 0; i < padkaIDs.size(); i++){
-            array2D[padkaIDs[i]].isCurbPoint = 2;
-        }
-    }
+    starshaped(array2D);
 }
 
 void Detector::xZeroMethod(std::vector<std::vector<Point3D>>& array3D,int index,int* indexArray){
