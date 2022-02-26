@@ -2,27 +2,23 @@
 
 /*Global variables.*/
 int channels = 64;                                    /* The number of channels of the LIDAR .*/
-std::string fixedFrame;                               /* Fixed Frame.*/
-std::string topicName;                                /* subscribed topic.*/
-bool x_zero_method, z_zero_method, star_shaped_method ; /*Methods of roadside detection*/
-int xDirection;                                       /*A vakfolt levágás milyen irányú.*/
-float interval;                                       /*A LIDAR vertikális szögfelbontásának, elfogadott intervalluma.*/
-float curbHeight;                                     /*Becsült minimum szegély magasság.*/
-int curbPoints;                                       /*A pontok becsült száma, a szegélyen.*/
-float beamZone;                                       /*A vizsgált sugárzóna mérete.*/                                 
-float min_X, max_X, min_Y, max_Y, min_Z, max_Z;       /*A vizsgált terület méretei.*/
+std::string params::fixedFrame;                       /* Fixed Frame.*/
+std::string params::topicName;                        /* subscribed topic.*/
+bool params::x_zero_method, params::z_zero_method, params::star_shaped_method ; /*Methods of roadside detection*/
+float params::interval;                                /*A LIDAR vertikális szögfelbontásának, elfogadott intervalluma.*/                             
+float params::min_X, params::max_X, params::min_Y, params::max_Y, params::min_Z, params::max_Z;       /*A vizsgált terület méretei.*/
 
-bool polysimp_allow = true;                           /*polygon-eygszerűsítés engedélyezése*/
-bool zavg_allow = true;                               /*egyszerűsített polygon z-koordinátái átlagból (engedély)*/
-float polysimp = 0.5;                                 /*polygon-egyszerűsítési tényező (Ramer-Douglas-Peucker)*/
-float polyz = -1.5;                                   /*manuálisan megadott z-koordináta (polygon)*/
+bool params::polysimp_allow = true;                           /*polygon-eygszerűsítés engedélyezése*/
+bool params::zavg_allow = true;                               /*egyszerűsített polygon z-koordinátái átlagból (engedély)*/
+float params::polysimp = 0.5;                                 /*polygon-egyszerűsítési tényező (Ramer-Douglas-Peucker)*/
+float params::polyz = -1.5;                                   /*manuálisan megadott z-koordináta (polygon)*/
 
 int ghostcount = 0;                                   /* segédváltozó az elavult markerek (ghost) eltávolításához */
 
 
 Detector::Detector(ros::NodeHandle* nh){
     /*Feliratkozás az adott topicra.*/
-    sub = nh->subscribe(topicName, 1, &Detector::filtered,this);
+    sub = nh->subscribe(params::topicName, 1, &Detector::filtered,this);
     /*A szűrt adatok hírdetése.*/
     pub_road = nh->advertise<pcl::PCLPointCloud2>("road", 1);
     pub_high = nh->advertise<pcl::PCLPointCloud2>("curb", 1);
@@ -74,9 +70,9 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
 
     auto filterCondition = boost::make_shared<FilteringCondition<pcl::PointXYZI>>(
         [=](const pcl::PointXYZI& point){
-            return point.x >= min_X && point.x <= max_X &&
-            point.y >= min_Y && point.y <= max_Y &&
-            point.z >= min_Z && point.z <= max_Z &&
+            return point.x >= params::min_X && point.x <= params::max_X &&
+            point.y >= params::min_Y && point.y <= params::max_Y &&
+            point.z >= params::min_Z && point.z <= params::max_Z &&
             point.x + point.y + point.z != 0;
         }
     );
@@ -152,7 +148,7 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
             if (angle[j] == 0)
                 break;
 
-            if (abs(angle[j] - array2D[i].alpha) <= interval)
+            if (abs(angle[j] - array2D[i].alpha) <= params::interval)
             {
                 newCircle = 0;
                 break;
@@ -172,7 +168,7 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
         }
     }
      /*Csaplár László kódjának meghívása és a szükséges határérték beállítása.*/
-    if (star_shaped_method )
+    if (params::star_shaped_method )
         Detector::starShapedSearch(array2D);
     
 
@@ -210,7 +206,7 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
         /*A megfelelő körív kiválasztása.*/
         for (j = 0; j < index; j++)
         {
-            if (abs(angle[j] - array2D[i].alpha) <= interval)
+            if (abs(angle[j] - array2D[i].alpha) <= params::interval)
             {
                 results = 1;
                 break;
@@ -223,7 +219,7 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
             array3D[j][indexArray[j]].p = array2D[i].p;
 
             /*A már ismert magaspontok.*/
-            if (star_shaped_method )
+            if (params::star_shaped_method )
                 array3D[j][indexArray[j]].isCurbPoint = array2D[i].isCurbPoint;
 
             /*Itt annyi különbség lesz, hogy a "z" érték nélkül adjuk hozzá a távolságot.*/
@@ -262,9 +258,9 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
         }
     }
 
-    if(x_zero_method)
+    if(params::x_zero_method)
         Detector::xZeroMethod(array3D,index,indexArray);
-    if(z_zero_method)
+    if(params::z_zero_method)
         Detector::zZeroMethod(array3D,index,indexArray);
 
     float d;
@@ -400,7 +396,7 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
 
         int lineStripID = 0; /*Az adott line strip ID-ja.*/
 
-        line_strip.header.frame_id = fixedFrame;
+        line_strip.header.frame_id = params::fixedFrame;
         line_strip.header.stamp = ros::Time();
         line_strip.type = visualization_msgs::Marker::LINE_STRIP;
         line_strip.action = visualization_msgs::Marker::ADD;
@@ -465,17 +461,17 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
                         line_strip.color.b = 0.0;
                     }
                     
-                    if (polysimp_allow)
+                    if (params::polysimp_allow)
                     {
                         line_strip.points.clear();
                         boost::geometry::clear(simplified);
-                        boost::geometry::simplify(line, simplified, polysimp);
+                        boost::geometry::simplify(line, simplified, params::polysimp);
                         for(boost::geometry::model::linestring<xy>::const_iterator it = simplified.begin(); it != simplified.end(); it++)
                         {
                             geometry_msgs::Point p;
                             p.x = boost::geometry::get<0>(*it);
                             p.y = boost::geometry::get<1>(*it);
-                            p.z = polyz;
+                            p.z = params::polyz;
 
                             line_strip.points.push_back(p);
                         }
@@ -516,17 +512,17 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
                 line_strip.color.g = 0.0;
                 line_strip.color.b = 0.0;
 
-                if (polysimp_allow)
+                if (params::polysimp_allow)
                 {
                     line_strip.points.clear();
                     boost::geometry::clear(simplified);
-                    boost::geometry::simplify(line, simplified, polysimp);
+                    boost::geometry::simplify(line, simplified, params::polysimp);
                     for(boost::geometry::model::linestring<xy>::const_iterator it = simplified.begin(); it != simplified.end(); it++)
                     {
                         geometry_msgs::Point p;
                         p.x = boost::geometry::get<0>(*it);
                         p.y = boost::geometry::get<1>(*it);
-                        p.z = polyz;
+                        p.z = params::polyz;
 
                         line_strip.points.push_back(p);
                     }
@@ -566,17 +562,17 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
                 line_strip.color.g = 1.0;
                 line_strip.color.b = 0.0;
 
-                if (polysimp_allow)
+                if (params::polysimp_allow)
                 {
                     line_strip.points.clear();
                     boost::geometry::clear(simplified);
-                    boost::geometry::simplify(line, simplified, polysimp);
+                    boost::geometry::simplify(line, simplified, params::polysimp);
                     for(boost::geometry::model::linestring<xy>::const_iterator it = simplified.begin(); it != simplified.end(); it++)
                     {
                         geometry_msgs::Point p;
                         p.x = boost::geometry::get<0>(*it);
                         p.y = boost::geometry::get<1>(*it);
-                        p.z = polyz;
+                        p.z = params::polyz;
 
                         line_strip.points.push_back(p);
                     }
@@ -602,7 +598,7 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
             }
             line_strip.lifetime = ros::Duration(0);
         }
-        if (zavg_allow)
+        if (params::zavg_allow)
         {
             for (int seg=0; seg < ma.markers.size(); seg++)
             {

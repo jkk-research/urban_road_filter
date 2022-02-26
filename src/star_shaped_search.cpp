@@ -9,10 +9,10 @@ int rep = 360;                  //number of detection beams (how many parts/sect
 float width = 0.2;              //width of beams
 float Kfi;                      //internal parameter, for assigning the points to their corresponding sectors ( = 1 / [2pi/rep] = 1 / [angle between neighboring beams] )
 float slope_param;              //"slope" parameter for edge detection (given by 2 points, in radial direction/plane)
-int dmin_param;                 //(see below)
-float kdev_param;               //(see below)
-float kdist_param;              //(see below)
-float angleFilter3;             /*Csaplár László kódjához szükséges. Sugár irányú határérték (fokban).*/
+int params::dmin_param;                 //(see below)
+float params::kdev_param;               //(see below)
+float params::kdist_param;              //(see below)
+float params::angleFilter3;             /*Csaplár László kódjához szükséges. Sugár irányú határérték (fokban).*/
 
 std::vector<box> beams(rep);        //beams
 std::vector<box *> beamp(rep + 1);  //pointers to the beams (+1 -> 0 AND 360)
@@ -104,9 +104,9 @@ void beamfunc(const int tid, std::vector<Point2D> &array2D) //beam algorithm (fi
     {               //edge detection (edge of the roadside)
         if (s > 1)  //for less than 2 points it would be pointless
         {
-            int dmin = dmin_param;      //minimal number of points required to begin adaptive evaluation
-            float kdev = kdev_param;    //coefficient: weighting the impact of deviation (difference) from average ( = overall sensitivity to changes)
-            float kdist = kdist_param;  //coefficient: weighting the impact of the distance between points ( = sensitivity for height error at close points)
+            int dmin = params::dmin_param;      //minimal number of points required to begin adaptive evaluation
+            float kdev = params::kdev_param;    //coefficient: weighting the impact of deviation (difference) from average ( = overall sensitivity to changes)
+            float kdist = params::kdist_param;  //coefficient: weighting the impact of the distance between points ( = sensitivity for height error at close points)
 
             float avg = 0, dev = 0, nan = 0;            //average value and absolute average deviation of the slope for adaptive detection + handling Not-a-Number values
             float ax, ay, bx, by, slp;                  //temporary variables (points 'a' and 'b' + slope)
@@ -151,7 +151,7 @@ void Detector::starShapedSearch(std::vector<Point2D> &array2D)  //entry point to
     beamp.push_back(&beams[0]);     //initializing "360 deg = 0 deg" pointer
     int f, s = array2D.size();   //temporary variables
     float r, fi;                    //polar coordinates
-    slope_param = angleFilter3 * (M_PI / 180);
+    slope_param = params::angleFilter3 * (M_PI / 180);
 
     for (int i = 0; i < s; i++) //points to polar coordinate-system + sorting into sectors
     {

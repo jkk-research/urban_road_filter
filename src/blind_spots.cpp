@@ -1,6 +1,8 @@
 #include "urban_road_filter/data_structures.hpp"
 
-bool blind_spots;                                     /*Vakfolt javító algoritmus.*/
+int params::xDirection;                                       /*A vakfolt levágás milyen irányú.*/
+bool params::blind_spots;                                     /*Vakfolt javító algoritmus.*/
+float params::beamZone;                                       /*A vizsgált sugárzóna mérete.*/    
 
 void Detector::blindSpots(std::vector<std::vector<Point3D>>& array3D,int index,int* indexArray,float* maxDistance){
     /*Vakfolt keresés:
@@ -12,7 +14,7 @@ void Detector::blindSpots(std::vector<std::vector<Point3D>>& array3D,int index,i
     int c1 = -1, c2 = -1, c3 = -1, c4 = -1;     /*A talált pontok ID-ja az első körvonalon.*/
     int i,j,k,l;                                /*Segéd változók*/
 
-    if (blind_spots)
+    if (params::blind_spots)
     {
         for (int i = 0; i < indexArray[1]; i++)
         {
@@ -60,17 +62,17 @@ void Detector::blindSpots(std::vector<std::vector<Point3D>>& array3D,int index,i
     float currentDegree; /*Az aktuális köríven, a szög nagysága.*/
 
     /*A körív méret meghatározása.*/
-    arcDistance = ((maxDistance[0] * M_PI) / 180) * beamZone;
+    arcDistance = ((maxDistance[0] * M_PI) / 180) * params::beamZone;
 
     /*0°-tól 360° - beamZone-ig.*/
-    for (int i = 0; i <= 360 - beamZone; i++)
+    for (int i = 0; i <= 360 - params::beamZone; i++)
     {
         blindSpot = 0;
 
-        if (blind_spots)
+        if (params::blind_spots)
         {
             /*Ha ezek a feltételek teljesülnek, akkor egy vakfoltba léptünk és itt nem vizsgálódunk.*/
-            if (xDirection == 0)
+            if (params::xDirection == 0)
             {
                 /*+-X irányba is vizsgáljuk a pontokat.*/
                 if ((q1 != 0 && q4 != 360 && (i <= q1 || i >= q4)) || (q2 != 180 && q3 != 180 && i >= q2 && i <= q3))
@@ -78,7 +80,7 @@ void Detector::blindSpots(std::vector<std::vector<Point3D>>& array3D,int index,i
                     blindSpot = 1;
                 }
             }
-            else if (xDirection == 1)
+            else if (params::xDirection == 1)
             {
                 /*+X irányba vizsgáljuk a pontokat.*/
                 if ((q2 != 180 && i >= q2 && i <= 270) || (q1 != 0 && (i <= q1 || i >= 270)))
@@ -102,7 +104,7 @@ void Detector::blindSpots(std::vector<std::vector<Point3D>>& array3D,int index,i
             notRoad = 0;
 
             /*Az első kör adott szakaszának vizsgálata.*/
-            for (j = 0; array3D[0][j].alpha <= i + beamZone && j < indexArray[0]; j++)
+            for (j = 0; array3D[0][j].alpha <= i + params::beamZone && j < indexArray[0]; j++)
             {
                 if (array3D[0][j].alpha >= i)
                 {
@@ -119,7 +121,7 @@ void Detector::blindSpots(std::vector<std::vector<Point3D>>& array3D,int index,i
             if (notRoad == 0)
             {
                 /*Az első kör szakaszát elfogadjuk.*/
-                for (j = 0; array3D[0][j].alpha <= i + beamZone && j < indexArray[0]; j++)
+                for (j = 0; array3D[0][j].alpha <= i + params::beamZone && j < indexArray[0]; j++)
                 {
                     if (array3D[0][j].alpha >= i)
                     {
@@ -131,7 +133,7 @@ void Detector::blindSpots(std::vector<std::vector<Point3D>>& array3D,int index,i
                 for (k = 1; k < index; k++)
                 {
                     /*Új szöget kell meghatározni, hogy a távolabbi körvonalakon is, ugyanakkora körív hosszt vizsgáljunk.*/
-                    if (i == 360 - beamZone)
+                    if (i == 360 - params::beamZone)
                     {
                         currentDegree = 360;
                     }
@@ -172,14 +174,14 @@ void Detector::blindSpots(std::vector<std::vector<Point3D>>& array3D,int index,i
     }
 
     /*Ugyanaz, mint az előző, csak itt 360°-tól 0° + beamZone-ig vizsgáljuk a pontokat.*/
-    for (i = 360; i >= 0 + beamZone; --i)
+    for (i = 360; i >= 0 + params::beamZone; --i)
     {
         blindSpot = 0;
 
-        if (blind_spots)
+        if (params::blind_spots)
         {
             /*Ha ezek a feltételek teljesülnek, akkor egy vakfoltba léptünk és itt nem vizsgálódunk.*/
-            if (xDirection == 0)
+            if (params::xDirection == 0)
             {
                 /*+-X irányba is vizsgáljuk a pontokat.*/
                 if ((q1 != 0 && q4 != 360 && (i <= q1 || i >= q4)) || (q2 != 180 && q3 != 180 && i >= q2 && i <= q3))
@@ -187,7 +189,7 @@ void Detector::blindSpots(std::vector<std::vector<Point3D>>& array3D,int index,i
                     blindSpot = 1;
                 }
             }
-            else if (xDirection == 1)
+            else if (params::xDirection == 1)
             {
                 /*+X irányba vizsgáljuk a pontokat.*/
                 if ((q2 != 180 && i >= q2 && i <= 270) || (q1 != 0 && (i <= q1 || i >= 270)))
@@ -211,7 +213,7 @@ void Detector::blindSpots(std::vector<std::vector<Point3D>>& array3D,int index,i
             notRoad = 0;
 
             /*Az első kör adott szakaszának vizsgálata.*/
-            for (j = indexArray[0] - 1; array3D[0][j].alpha >= i - beamZone && j >= 0; --j)
+            for (j = indexArray[0] - 1; array3D[0][j].alpha >= i - params::beamZone && j >= 0; --j)
             {
                 if (array3D[0][j].alpha <= i)
                 {
@@ -228,7 +230,7 @@ void Detector::blindSpots(std::vector<std::vector<Point3D>>& array3D,int index,i
             if (notRoad == 0)
             {
                 /*Az első kör szakaszát elfogadjuk.*/
-                for (j = indexArray[0] - 1; array3D[0][j].alpha >= i - beamZone && j >= 0; --j)
+                for (j = indexArray[0] - 1; array3D[0][j].alpha >= i - params::beamZone && j >= 0; --j)
                 {
                     if (array3D[0][j].alpha <= i)
                     {
@@ -240,7 +242,7 @@ void Detector::blindSpots(std::vector<std::vector<Point3D>>& array3D,int index,i
                 for (k = 1; k < index; k++)
                 {
                     /*Új szöget kell meghatározni, hogy a távolabbi körvonalakon is, ugyanakkora körív hosszt vizsgáljunk.*/
-                    if (i == 0 + beamZone)
+                    if (i == 0 + params::beamZone)
                     {
                         currentDegree = 0;
                     }

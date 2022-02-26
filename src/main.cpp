@@ -2,33 +2,33 @@
 
 /*A paraméterek beállítása.*/
 void paramsCallback(lidar_filters_pkg::LidarFiltersConfig &config, uint32_t level){
-    fixedFrame = config.fixed_frame;
-    topicName = config.topic_name;
-    x_zero_method = config.x_zero_method;
-    z_zero_method = config.z_zero_method;
-    star_shaped_method  = config.star_shaped_method ;
-    blind_spots = config.blind_spots;
-    xDirection = config.xDirection;
-    interval = config.interval;
-    curbHeight = config.curb_height;
-    curbPoints = config.curb_points;
-    beamZone = config.beamZone;
-    angleFilter1 = config.cylinder_deg_x;
-    angleFilter2 = config.cylinder_deg_z;
-    angleFilter3 = config.sector_deg;
-    min_X = config.min_x;
-    max_X = config.max_x;
-    min_Y = config.min_y;
-    max_Y = config.max_y;
-    min_Z = config.min_z;
-    max_Z = config.max_z;
-    dmin_param = config.dmin_param;
-    kdev_param = config.kdev_param;
-    kdist_param = config.kdist_param;
-    polysimp_allow = config.simple_poly_allow;
-    polysimp = config.poly_s_param;
-    zavg_allow = config.poly_z_avg_allow;
-    polyz = config.poly_z_manual;
+    params::fixedFrame = config.fixed_frame;
+    params::topicName = config.topic_name;
+    params::x_zero_method = config.x_zero_method;
+    params::z_zero_method = config.z_zero_method;
+    params::star_shaped_method  = config.star_shaped_method ;
+    params::blind_spots = config.blind_spots;
+    params::xDirection = config.xDirection;
+    params::interval = config.interval;
+    params::curbHeight = config.curb_height;
+    params::curbPoints = config.curb_points;
+    params::beamZone = config.beamZone;
+    params::angleFilter1 = config.cylinder_deg_x;
+    params::angleFilter2 = config.cylinder_deg_z;
+    params::angleFilter3 = config.sector_deg;
+    params::min_X = config.min_x;
+    params::max_X = config.max_x;
+    params::min_Y = config.min_y;
+    params::max_Y = config.max_y;
+    params::min_Z = config.min_z;
+    params::max_Z = config.max_z;
+    params::dmin_param = config.dmin_param;
+    params::kdev_param = config.kdev_param;
+    params::kdist_param = config.kdist_param;
+    params::polysimp_allow = config.simple_poly_allow;
+    params::polysimp = config.poly_s_param;
+    params::zavg_allow = config.poly_z_avg_allow;
+    params::polyz = config.poly_z_manual;
     ROS_INFO("Updated params %s", ros::this_node::getName().c_str());
 }
 

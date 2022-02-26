@@ -1,6 +1,8 @@
 #include "urban_road_filter/data_structures.hpp"
 
-float angleFilter1;                                   /*X = 0 érték mellett, három pont által bezárt szög.*/
+float params::angleFilter1;                                   /*X = 0 érték mellett, három pont által bezárt szög.*/
+float params::curbHeight;                                     /*Becsült minimum szegély magasság.*/
+int params::curbPoints;                                       /*A pontok becsült száma, a szegélyen.*/
 
 void Detector::xZeroMethod(std::vector<std::vector<Point3D>>& array3D,int index,int* indexArray){
     /*-- 1. lépés: A NEM út pontok szűrése. --*/
@@ -25,10 +27,10 @@ void Detector::xZeroMethod(std::vector<std::vector<Point3D>>& array3D,int index,
         }
 
         /*A kör pontjainak vizsgálata. X = 0 módszer.*/
-        for (int j = curbPoints; j <= (indexArray[i] - 1) - curbPoints; j++)
+        for (int j = params::curbPoints; j <= (indexArray[i] - 1) - params::curbPoints; j++)
         {
-            p2 = j + curbPoints / 2;
-            p3 = j + curbPoints;
+            p2 = j + params::curbPoints / 2;
+            p3 = j + params::curbPoints;
 
             d = sqrt(
                 pow(array3D[i][p3].p.x - array3D[i][j].p.x , 2) +
@@ -56,9 +58,9 @@ void Detector::xZeroMethod(std::vector<std::vector<Point3D>>& array3D,int index,
                 alpha = acos(bracket) * 180 / M_PI;
 
                 /*Feltétel és csoporthoz adás.*/
-                if (alpha <= angleFilter1 &&
-                    (abs(array3D[i][j].p.z  - array3D[i][p2].p.z ) >= curbHeight ||
-                    abs(array3D[i][p3].p.z  - array3D[i][p2].p.z ) >= curbHeight) &&
+                if (alpha <= params::angleFilter1 &&
+                    (abs(array3D[i][j].p.z  - array3D[i][p2].p.z ) >= params::curbHeight ||
+                    abs(array3D[i][p3].p.z  - array3D[i][p2].p.z ) >= params::curbHeight) &&
                     abs(array3D[i][j].p.z  - array3D[i][p3].p.z ) >= 0.05)
                 {
                     array3D[i][p2].isCurbPoint  = 2;

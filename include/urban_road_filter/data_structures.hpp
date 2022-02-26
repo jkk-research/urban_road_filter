@@ -63,27 +63,28 @@ struct box      //struct for detection beams
     float o, d;           //internal parameters (trigonometry)
 };
 
-extern std::string fixedFrame;                               /* Fixed Frame.*/
-extern std::string topicName;                                /* subscribed topic.*/
-extern bool x_zero_method, z_zero_method, star_shaped_method ; /*Methods of roadside detection*/
-extern bool blind_spots;                                     /*Vakfolt javító algoritmus.*/
-extern int xDirection;                                       /*A vakfolt levágás milyen irányú.*/
-extern float interval;                                       /*A LIDAR vertikális szögfelbontásának, elfogadott intervalluma.*/
-extern float curbHeight;                                     /*Becsült minimum szegély magasság.*/
-extern int curbPoints;                                       /*A pontok becsült száma, a szegélyen.*/
-extern float beamZone;                                       /*A vizsgált sugárzóna mérete.*/
-extern float angleFilter1;                                   /*X = 0 érték mellett, három pont által bezárt szög.*/
-extern float angleFilter2;                                   /*Z = 0 érték mellett, két vektor által bezárt szög.*/
-extern float angleFilter3;                                   /*Csaplár László kódjához szükséges. Sugár irányú határérték (fokban).*/
-extern float min_X, max_X, min_Y, max_Y, min_Z, max_Z;       /*A vizsgált terület méretei.*/
-extern int dmin_param;                 //(see below)
-extern float kdev_param;               //(see below)
-extern float kdist_param;              //(see below)
-extern bool polysimp_allow;                           /*polygon-eygszerűsítés engedélyezése*/
-extern bool zavg_allow;                               /*egyszerűsített polygon z-koordinátái átlagból (engedély)*/
-extern float polysimp;                                 /*polygon-egyszerűsítési tényező (Ramer-Douglas-Peucker)*/
-extern float polyz;                                   /*manuálisan megadott z-koordináta (polygon)*/
-
+namespace params{
+  extern std::string fixedFrame;                               /* Fixed Frame.*/
+  extern std::string topicName;                                /* subscribed topic.*/
+  extern bool x_zero_method, z_zero_method, star_shaped_method ; /*Methods of roadside detection*/
+  extern bool blind_spots;                                     /*Vakfolt javító algoritmus.*/
+  extern int xDirection;                                       /*A vakfolt levágás milyen irányú.*/
+  extern float interval;                                       /*A LIDAR vertikális szögfelbontásának, elfogadott intervalluma.*/
+  extern float curbHeight;                                     /*Becsült minimum szegély magasság.*/
+  extern int curbPoints;                                       /*A pontok becsült száma, a szegélyen.*/
+  extern float beamZone;                                       /*A vizsgált sugárzóna mérete.*/
+  extern float angleFilter1;                                   /*X = 0 érték mellett, három pont által bezárt szög.*/
+  extern float angleFilter2;                                   /*Z = 0 érték mellett, két vektor által bezárt szög.*/
+  extern float angleFilter3;                                   /*Csaplár László kódjához szükséges. Sugár irányú határérték (fokban).*/
+  extern float min_X, max_X, min_Y, max_Y, min_Z, max_Z;       /*A vizsgált terület méretei.*/
+  extern int dmin_param;                 //(see below)
+  extern float kdev_param;               //(see below)
+  extern float kdist_param;              //(see below)
+  extern bool polysimp_allow;                           /*polygon-eygszerűsítés engedélyezése*/
+  extern bool zavg_allow;                               /*egyszerűsített polygon z-koordinátái átlagból (engedély)*/
+  extern float polysimp;                                 /*polygon-egyszerűsítési tényező (Ramer-Douglas-Peucker)*/
+  extern float polyz;                                   /*manuálisan megadott z-koordináta (polygon)*/
+};
 /*For pointcloud filtering*/
 template <typename PointT>
 class FilteringCondition : public pcl::ConditionBase<PointT>
