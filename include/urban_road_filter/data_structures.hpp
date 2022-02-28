@@ -120,6 +120,8 @@ class Detector{
 
     void starShapedSearch(std::vector<Point2D>& array2D);
 
+    void beam_init();
+
     void xZeroMethod(std::vector<std::vector<Point3D>>& array3D,int index,int* indexArray);
 
     void zZeroMethod(std::vector<std::vector<Point3D>>& array3D,int index,int* indexArray);

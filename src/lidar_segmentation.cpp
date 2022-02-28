@@ -26,6 +26,8 @@ Detector::Detector(ros::NodeHandle* nh){
     pub_pobroad = nh->advertise<pcl::PCLPointCloud2>("road_probably", 1);
     pub_marker = nh->advertise<visualization_msgs::MarkerArray>("road_marker", 1);
 
+    Detector::beam_init();
+
     ROS_INFO("Ready");
 
 }

@@ -27,7 +27,7 @@ float slope(float x0, float y0, float x1, float y1) //get slope between 2 points
     return (y1 - y0) / (x1 - x0);
 }
 
-void beam_init()    //beam initialization
+void Detector::beam_init()    //beam initialization
 {
     {
         float fi, off = 0.5 * width;    //temporary variables
@@ -147,7 +147,6 @@ void beamfunc(const int tid, std::vector<Point2D> &array2D) //beam algorithm (fi
 
 void Detector::starShapedSearch(std::vector<Point2D> &array2D)  //entry point to the code, everything gets called here (except for initialization - that needs to be called separately, at the start of the program - "beam_init()")
 {
-    beam_init();
     beamp.push_back(&beams[0]);     //initializing "360 deg = 0 deg" pointer
     int f, s = array2D.size();   //temporary variables
     float r, fi;                    //polar coordinates
