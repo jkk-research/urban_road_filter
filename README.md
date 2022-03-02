@@ -69,7 +69,7 @@ If you use any of this code please consider citing the [paper](https://www.mdpi.
 }
 ```
 
-# Realated solutions
+# Related solutions
 
 - [`points_preprocessor`](https://github.com/Autoware-AI/core_perception/tree/master/points_preprocessor) `ray_ground_filter` and `ring_ground_filter` (ROS)
 - [`linefit_ground_segmentation`](https://github.com/lorenwel/linefit_ground_segmentation) (ROS)
