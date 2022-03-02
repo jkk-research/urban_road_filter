@@ -16,7 +16,7 @@ void Detector::blindSpots(std::vector<std::vector<Point3D>>& array3D,int index,i
 
     if (params::blind_spots)
     {
-        for (int i = 0; i < indexArray[1]; i++)
+        for (i = 0; i < indexArray[1]; i++)
         {
             if(array3D[1][i].isCurbPoint==2)
             {
@@ -65,7 +65,7 @@ void Detector::blindSpots(std::vector<std::vector<Point3D>>& array3D,int index,i
     arcDistance = ((maxDistance[0] * M_PI) / 180) * params::beamZone;
 
     /*0°-tól 360° - beamZone-ig.*/
-    for (int i = 0; i <= 360 - params::beamZone; i++)
+    for (i = 0; i <= 360 - params::beamZone; i++)
     {
         blindSpot = 0;
 

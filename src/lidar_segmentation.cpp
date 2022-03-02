@@ -359,19 +359,19 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
         A "markerPointsArray" tömb 3. oszlopában ha 1-es szerepel, akkor az a piros line strip-hez tartozik,
         ellenkező esetben a zöldhöz.*/
 
-        /*Ha az első pont zöld, de a második piros, akkor az első is a piros line strip-be kerül.*/
+        /*If the first point is green, but the second is red, then the first is put inside the red line strip as well.*/
         if (markerPointsArray[0][3] == 0 && markerPointsArray[1][3] == 1)
             markerPointsArray[0][3] = 1;
 
-        /*Ha az utolsó pont zöld, de az utolsó előtti piros, akkor az utolsó is a piros line strip-be kerül.*/
+        /*If the last point is green, but the penultimate is red, then the last is put inside the red line strip as well.*/
         if (markerPointsArray[cM - 1][3] == 0 && markerPointsArray[cM - 2][3] == 1)
             markerPointsArray[cM - 1][3] = 1;
 
-        /*Ha az első pont piros, de a második zöld, akkor az első is a zöld line strip-be kerül.*/
+        /*If the first point is red, but the second is green, then the first is put inside the green line strip too.*/
         if (markerPointsArray[0][3] == 1 && markerPointsArray[1][3] == 0)
             markerPointsArray[0][3] = 0;
 
-        /*Ha az utolsó pont piros, de az utolsó előtti zöld, akkor az utolsó is a zöld line strip-be kerül.*/
+        /*If the last point is red, but the penultimate is green, then the last is also put inside the green line strip.*/
         if (markerPointsArray[cM - 1][3] == 1 && markerPointsArray[cM - 2][3] == 0)
             markerPointsArray[cM - 1][3] = 0;
 
