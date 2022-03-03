@@ -1,37 +1,37 @@
 #include "urban_road_filter/data_structures.hpp"
 
-float params::angleFilter2;                                   /*Z = 0 érték mellett, két vektor által bezárt szög.*/ 
+float params::angleFilter2;     //angle between two vectors, while keeping Z = 0
 
 void Detector::zZeroMethod(std::vector<std::vector<Point3D>>& array3D,int index,int* indexArray){
-    /*-- 1. lépés: A NEM út pontok szűrése. --*/
-    int p2, p3; /*p2, p3 - A három vizsgált pontból, a második és a harmadik.*/
+    /*-- step 1.: filtering the NON-road points --*/
+    int p2, p3;     //2nd and 3rd of the points that are being examined
 
     /*
-    --> alpha - A három pont és a két vektor által bezárt szög.
-    --> x1, x2, x3 - A három pont által bezárt háromszög oldalainak hossza.
-    --> curbPoints - A pontok becsült száma, a szegélyen.
-    --> va1, va2, vb1, vb2 - A két vektor.
-    --> max1, max2 - Nem csak a szöget, hanem a magasságot is vizsgálni kell.
-    --> d - A két szélső pont közötti távolság. A LIDAR forgása és a körív szakadások miatt.
-        d - Ez a változó a program későbbi részein is felhasználásra kerül.
+    --> alpha - angle between the three points and the two vectors
+    --> x1, x2, x3 - length of the sides of the triangle given by the three points
+    --> curbPoints - estimated number of points on the roadside
+    --> va1, va2, vb1, vb2 - the two vectors
+    --> max1, max2 - not only angle, but height needs to be checked as well
+    --> d - distance between the two outermost points - the rotation of the LiDAR and arc gaps make it necessary
+        d - this variable also gets used later on in the code
     */
     float alpha, x1, x2, x3, va1, va2, vb1, vb2, max1, max2, d, bracket;
     for (int i = 0; i < index; i++){
-    /*A kör pontjainak vizsgálata. Z = 0 módszer.*/
+    /*evaluation of points in an arc - z-zero method*/
         for (int j = params::curbPoints; j <= (indexArray[i] - 1) - params::curbPoints; j++)
         {
             d = sqrt(
                 pow(array3D[i][j+params::curbPoints].p.x - array3D[i][j-params::curbPoints].p.x, 2) +
                 pow(array3D[i][j+params::curbPoints].p.y - array3D[i][j-params::curbPoints].p.y, 2));
 
-            /*A távolság, 5 méternél kisebb legyen.*/
+            /*set the distance to be less than 5 meters*/
             if (d < 5.0000)
             {
-                /*Kezdeti értékek beállítása.*/
+                /*initialization*/
                 max1 = max2 = abs(array3D[i][j].p.z);
                 va1 = va2 = vb1 = vb2 = 0;
 
-                /*Az 'a' vektor és a legnagyobb magasság beállítása.*/
+                /*initializing vector 'a' and maximal height*/
                 for (int k = j - 1; k >= j - params::curbPoints; k--)
                 {
                     va1 = va1 + (array3D[i][k].p.x - array3D[i][j].p.x);
@@ -40,7 +40,7 @@ void Detector::zZeroMethod(std::vector<std::vector<Point3D>>& array3D,int index,
                         max1 = abs(array3D[i][k].p.z);
                 }
 
-                /*A 'b' vektor és a legnagyobb magasság beállítása.*/
+                /*initializing vector 'b' and maximal height*/
                 for (int k = j + 1; k <= j + params::curbPoints; k++)
                 {
                     vb1 = vb1 + (array3D[i][k].p.x - array3D[i][j].p.x );
@@ -62,7 +62,7 @@ void Detector::zZeroMethod(std::vector<std::vector<Point3D>>& array3D,int index,
 
                 alpha = acos(bracket) * 180 / M_PI;
 
-                /*Feltétel és csoporthoz adás.*/
+                /*condition and assignment to group*/
                 if (alpha <= params::angleFilter2 &&
                     (max1 - abs(array3D[i][j].p.z ) >= params::curbHeight ||
                     max2 - abs(array3D[i][j].p.z) >= params::curbHeight) &&

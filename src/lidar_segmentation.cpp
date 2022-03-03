@@ -1,25 +1,32 @@
 #include "urban_road_filter/data_structures.hpp"
 
 /*Global variables.*/
-int channels = 64;                                    /* The number of channels of the LIDAR .*/
-std::string params::fixedFrame;                       /* Fixed Frame.*/
-std::string params::topicName;                        /* subscribed topic.*/
-bool params::x_zero_method, params::z_zero_method, params::star_shaped_method ; /*Methods of roadside detection*/
-float params::interval;                                /*A LIDAR vertikális szögfelbontásának, elfogadott intervalluma.*/                             
-float params::min_X, params::max_X, params::min_Y, params::max_Y, params::min_Z, params::max_Z;       /*A vizsgált terület méretei.*/
+int         channels = 64;                  //The number of channels of the LIDAR .
+std::string params::fixedFrame;             //Fixed Frame.
+std::string params::topicName;              //subscribed topic
+bool        params::x_zero_method,
+            params::z_zero_method,
+            params::star_shaped_method;     //methods of roadside detection
+float       params::interval;               //acceptable interval for the LIDAR's vertical angular resolution
+float       params::min_X,
+            params::max_X,
+            params::min_Y,
+            params::max_Y,
+            params::min_Z,
+            params::max_Z;                  //dimensions of detection area
 
-bool params::polysimp_allow = true;                           /*polygon-eygszerűsítés engedélyezése*/
-bool params::zavg_allow = true;                               /*egyszerűsített polygon z-koordinátái átlagból (engedély)*/
-float params::polysimp = 0.5;                                 /*polygon-egyszerűsítési tényező (Ramer-Douglas-Peucker)*/
-float params::polyz = -1.5;                                   /*manuálisan megadott z-koordináta (polygon)*/
+bool        params::polysimp_allow = true;  //enable polygon simplification
+bool        params::zavg_allow = true;      //enable usage of average 'z' value as polygon height
+float       params::polysimp = 0.5;         //coefficient of polygon simplification (ramer-douglas-peucker)
+float       params::polyz = -1.5;           //manually set z-coordinate (output polygon)
 
-int ghostcount = 0;                                   /* segédváltozó az elavult markerek (ghost) eltávolításához */
+int         ghostcount = 0;                 //counter variable helping to remove obsolete markers (ghosts)
 
 
 Detector::Detector(ros::NodeHandle* nh){
-    /*Feliratkozás az adott topicra.*/
+    /*subscribing to the given topic*/
     sub = nh->subscribe(params::topicName, 1, &Detector::filtered,this);
-    /*A szűrt adatok hírdetése.*/
+    /*publishing filtered points*/
     pub_road = nh->advertise<pcl::PCLPointCloud2>("road", 1);
     pub_high = nh->advertise<pcl::PCLPointCloud2>("curb", 1);
     pub_box = nh->advertise<pcl::PCLPointCloud2>("roi", 1); // ROI - region of interest
@@ -31,9 +38,10 @@ Detector::Detector(ros::NodeHandle* nh){
     ROS_INFO("Ready");
 
 }
-/*FÜGGVÉNYEK*/
 
-/*Rekurziv, gyors rendező függvény. (1/2)*/
+/*FUNCTIONS*/
+
+/*recursive, quick sorting function (1/2)*/
 int Detector::partition(std::vector<std::vector<Point3D>>& array3D, int arc,int low, int high)
 {
     float pivot = array3D[arc][high].alpha;
@@ -48,7 +56,7 @@ int Detector::partition(std::vector<std::vector<Point3D>>& array3D, int arc,int 
     return (i + 1);
 }
 
-/*Rekurziv, gyors rendező függvény. (2/2)*/
+/*recursive, quick sorting function (2/2)*/
 void Detector::quickSort(std::vector<std::vector<Point3D>>& array3D, int arc, int low, int high)
 {
     if (low < high)
@@ -60,14 +68,14 @@ void Detector::quickSort(std::vector<std::vector<Point3D>>& array3D, int arc, in
 }
 
 void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
-    /*Segédváltozók, a "for" ciklusokhoz.*/
+    /*variables for the "for" loops*/
     int i, j, k, l;
 
-    pcl::PointXYZI pt;                                           /*Egy db pont tárolásához szükséges.*/
-    auto cloud_filtered_Box = boost::make_shared<pcl::PointCloud<pcl::PointXYZI>>(cloud);          /*A vizsgált terület, összes pontja.*/
-    pcl::PointCloud<pcl::PointXYZI> cloud_filtered_Road;         /*Szűrt pontok (járható úttest).*/
-    pcl::PointCloud<pcl::PointXYZI> cloud_filtered_ProbablyRoad; /*Szűrt pontok (nem járható úttest).*/
-    pcl::PointCloud<pcl::PointXYZI> cloud_filtered_High;         /*Szűrt pontok (nem úttest).*/
+    pcl::PointXYZI pt;                                                                      //temporary variable for storing a point
+    auto cloud_filtered_Box = boost::make_shared<pcl::PointCloud<pcl::PointXYZI>>(cloud);   //all points in the detection area
+    pcl::PointCloud<pcl::PointXYZI> cloud_filtered_Road;                                    //filtered points (driveable road)
+    pcl::PointCloud<pcl::PointXYZI> cloud_filtered_ProbablyRoad;                            //filtered points (non-driveable road)
+    pcl::PointCloud<pcl::PointXYZI> cloud_filtered_High;                                    //filtered points (non-road)
 
 
     auto filterCondition = boost::make_shared<FilteringCondition<pcl::PointXYZI>>(
@@ -83,54 +91,47 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
     condition_removal.setInputCloud(cloud_filtered_Box);
     condition_removal.filter(*cloud_filtered_Box);
 
-    /*A pontok darabszáma, a vizsgált területen.*/
+    /*number of points in the detection area*/
     size_t piece = cloud_filtered_Box->points.size();
 
-    /*Minimum 30 pont legyen a vizsgált területen, különben programhibák lesznek.
-    Illetve nincs is értelme vizsgálni ilyen kevés pontot.*/
+    /*A minimum of 30 points are requested in the detection area to avoid errors.
+    Also, there is not much point in evaluating less data than that.*/
     if (piece < 30){
         return;
     }
-    
-    /*
-    2D tömb:
-    - A pontok értékei: (0: X, 1: Y, 2: Z),
-    - A pontok origótól vett távolsága: (3: D),
-    - A pontok szögfelbontása: (4: Alpha),
-    - Csaplár László kódja alapján felismert szegély pontok: Csoportszámok (5: Road = 1, High = 2).
-    - intenzitás-értékek (6: intensity)
-    */
+
     std::vector<Point2D> array2D(piece);
 
-    /*A szögfüggvények, zárójelbeli értékeinek tárolásához.*/
+    /*variable for storing the input for trigonometric functions*/
     float bracket;
 
-    /*Egy 1D tömb, melyben a különböző szögfelbontások találhatóak.
-    Ez a LIDAR csatornaszámával egyenlő.
-    Fontos, hogy 0 értékekkel töltsük fel.*/
+    /*A 1D array containing the various angular resolutions.
+    This equals to the number of LiDAR channels.
+    It is important to fill it with 0 values.*/
     float angle[channels] = {0};
 
-    /*A szögfelbontásokat tároló 1D tömböt, segít feltölteni.*/
+    /*This helps to fill the 1D array containing the angular resolutions.*/
     int index = 0;
 
+    /*whether the given angle corresponds to a new arc*/
     int newCircle;
 
-    /*A 2D tömb feltöltése.*/
+    /*filling the 2D array*/
     for (i = 0; i < piece; i++){
-        /*--- Az első 4 oszlop feltöltése. ---*/
+        /*--- filling the first 4 columns ---*/
         array2D[i].p = cloud_filtered_Box->points[i];
         array2D[i].d = sqrt(pow(array2D[i].p.x, 2) + pow(array2D[i].p.y, 2) + pow(array2D[i].p.z, 2));
 
-        /*--- Az 5. oszlop feltöltése. ---*/
+        /*--- filling the 5. column ---*/
         bracket = abs(array2D[i].p.z) / array2D[i].d;
 
-        /*A kerekítési hibák miatt szükséges sorok.*/
+        /*required because of rounding errors*/
         if (bracket < -1)
             bracket = -1;
         else if (bracket > 1)
             bracket = 1;
 
-        /*Számolás és konvertálás fokba.*/
+        /*calculation and conversion to degrees*/
         if (array2D[i].p.z < 0)
         {
             array2D[i].alpha = acos(bracket) * 180 / M_PI;
@@ -139,12 +140,12 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
             array2D[i].alpha = (asin(bracket) * 180 / M_PI) + 90;
         }
 
-        /*A megfelelő index beállítása.*/
-        /*Azt vesszük alapul, hogy az adott szög, egy új körvonahoz tartozik (azaz newCircle = 1).*/
+        /*setting the index*/
+        /*Our basic assumption is that the angle corresponds to a new circle/arc.*/
         newCircle = 1;
 
-        /*Ha már korábban volt ilyen érték (a meghatározott intervallumon belül), akkor ez nem egy új körív.
-        Azaz "newCircle = 0", a folyamatból kiléphetünk, nincs szükség további vizsgálatra.*/
+        /*If this value has already occured (within the specified interval), then this is not a new arc.
+        Which means that "newCircle = 0", we can exit the loop, no further processing required.*/
         for (j = 0; j < channels; j++)
         {
             if (angle[j] == 0)
@@ -157,11 +158,11 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
             }
         }
 
-        /*Ha ilyen érték, nem szerepel még a tömbben, akkor ez egy új körív.*/
+        /*If no such value is registered in the array, then it's a new circle/arc.*/
         if (newCircle == 1)
         {
-            /*Feltétel, hogy a program ne lépjen ki szegmentálási hibával.
-            Ha valamilyen okból, több körív keletkezne mint 64, hiba lépne fel.*/
+            /*We cannot allow the program to halt with a segmentation fault error.
+            If for any reason there would come to be more than 64 arcs/circles, an error would occur.*/
             if (index < channels)
             {
                 angle[index] = array2D[i].alpha;
@@ -169,43 +170,34 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
             }
         }
     }
-     /*Csaplár László kódjának meghívása és a szükséges határérték beállítása.*/
+    /*calling starShapedSearch algorithm*/
     if (params::star_shaped_method )
         Detector::starShapedSearch(array2D);
     
 
-    /*A szögfelbontások növekvő sorrendbe rendezése.
-    A legkisebb lesz az első körív és így tovább.*/
+    /*Sorting the angular resolutions by ascending order...
+    The smallest will be the first arc, etc..*/
     std::sort(angle, angle + index);
-    /*Segédváltozók, a "for" ciklusokhoz.*/
 
-    /*
-    3D tömb:
-    - A pontok értékei: (0: X, 1: Y, 2: Z),
-    - A pontok origótól vett távolsága, z = 0 értékkel: (3: D),
-    - A pontok helyzete egy körben (360°). (4: Alpha),
-    - X = 0 érték mellett, az új Y koordináták (5: új Y),
-    - Csoportszámok (6: Road = 1, High = 2).
-    */
     std::vector<std::vector<Point3D>> array3D(channels,std::vector<Point3D>(piece));
 
-    /*Az adott köríveket tartalmazó csoportok (azaz a "channels"),
-    megfelelő sorindexeinek beállításához szükséges.
-    Fontos, hogy 0 értékekkel töltsük fel.*/
+    /*This is required to set up the row indices of
+    the groups ("channels") containing the arcs.
+    It is important to fill it with 0 values.*/
     int indexArray[channels] = {0};
 
-    /*Egy 1D tömb. Az adott köríven, az origótól, a legnagyobb távolsággal rendelkező pontok értékei.*/
+    /*A 1D array. The values of points that have the greatest distance from the origo.*/
     float maxDistance[channels] = {0};
 
-    /*Hibás LIDAR csatornaszám esetén szükséges.*/
+    /*variable helping to handle errors caused by wrong number of channels.*/
     int results;
 
-    /*A 3D tömb feltöltése.*/
+    /*filling the 3D array*/
     for (i = 0; i < piece; i++)
     {
         results = 0;
 
-        /*A megfelelő körív kiválasztása.*/
+        /*selecting the desired arc*/
         for (j = 0; j < index; j++)
         {
             if (abs(angle[j] - array2D[i].alpha) <= params::interval)
@@ -217,17 +209,17 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
 
         if (results == 1)
         {
-            /*Az értékek hozzáadás, a 2D tömbből.*/
+            /*assigning values from the 2D array*/
             array3D[j][indexArray[j]].p = array2D[i].p;
 
-            /*A már ismert magaspontok.*/
+            /*the known "high" points*/
             if (params::star_shaped_method )
                 array3D[j][indexArray[j]].isCurbPoint = array2D[i].isCurbPoint;
 
-            /*Itt annyi különbség lesz, hogy a "z" érték nélkül adjuk hozzá a távolságot.*/
+            /*The only difference here is that the distance is calculated in 2D - with no regard to the 'z' value.*/
             array3D[j][indexArray[j]].d = sqrt(pow(array2D[i].p.x, 2) + pow(array2D[i].p.y, 2));
 
-            /*Az 5. oszlop feltöltése, a szögekkel. 360 fokban, minden pontnak van egy szöge.*/
+            /*filling the 5. column with the angular position of points, in degrees.*/
             bracket = (abs(array3D[j][indexArray[j]].p.x)) / (array3D[j][indexArray[j]].d);
             if (bracket < -1)
                 bracket = -1;
@@ -267,24 +259,24 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
 
     float d;
 
-    /*-- 2. lépés: Az út pontok szűrése. --*/
-    /*A tömb elemeinek rendezése oly módon, hogy körönként, a szögeknek megfelelő sorrendben legyenek.*/
+    /*-- step 2.: filtering road points --*/
+    /*ordering the elements of the array by angle on every arc*/
     for (i = 0; i < index; i++){
         quickSort(array3D, i, 0, indexArray[i] - 1);
     }
-    /*Vakfolt keresés*/
+    /*blindspot detection*/
     Detector::blindSpots(array3D,index,indexArray,maxDistance);
 
-    /*-- 3. lépés: A marker pontjainak keresése. Adott fokban a legtávolabbi zöld pont. --*/
-    /*A marker pontjait tartalmazza. Az első három oszlopban az X - Y - Z koordinátát,
-    a negyedikben pedig 0 - 1 érték szerepel attól függően, hogy az adott fokban található-e olyan pont, ami nincs útnak jelölve.*/
+    /*-- step 3: searching for marker points - the farthest green point within the given angle --*/
+    /*It contains the points of the marker. The first three columns contain the X - Y - Z coordinates
+    and the fourth column contains value 0 or 1 depending on whether there is a point within the given angle that is not marked as road.*/
     float markerPointsArray[piece][4];
-    float maxDistanceRoad; /*Adott fokban, a legtávolabbi zöld pont távolsága.*/
-    int cM = 0;            /*Segédváltozó, a marker pontok feltöltéséhez (c - counter, M - Marker).*/
-    int ID1, ID2;          /*Az adott pont melyik körvonalon van (ID1) és hányadik pont (ID2).*/
-    int redPoints;         /*A vizsgált sávban van-e magaspont, vagy olyan pont, amit nem jelölt a program útnak, se magaspontnak.*/
+    float maxDistanceRoad;              //the distance of the farthest green point within the given angle
+    int cM = 0;                         //variable helping to fill the marker with points (c - counter, M - Marker)
+    int ID1, ID2;                       //which arc does the point fall onto (ID1) and (ordinally) which point is it (ID2)
+    int redPoints;                      //whether there is a high point in the examined segment or a point that has not been marked as either road or high point
 
-    /*360 fokban megvizsgáljuk a pontokat, 1 fokonként.*/
+    /*checking the points by 1 degree at a time*/
     for (i = 0; i <= 360; i++)
     {
         ID1 = -1;
@@ -292,19 +284,19 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
         maxDistanceRoad = 0;
         redPoints = 0;
 
-        /*Itt végigmegyünk az összes körvonal, összes pontján.*/
+        /*iterating through all the points of all the arcs*/
         for (j = 0; j < index; j++)
         {
             for (k = 0; k < indexArray[j]; k++)
             {
-                /*Ha találunk az adott fokban nem út pontot, akkor kilépünk, mert utána úgyse lesz már út pont és a "redPoints" változó 1-es érétket kap.*/
+                /*If a non-road point is found, then we break the loop, because there will not be a road point found later on and value 1 will be assigned to the variable "redPoints".*/
                 if (array3D[j][k].isCurbPoint != 1 && array3D[j][k].alpha >= i && array3D[j][k].alpha < i + 1)
                 {
                     redPoints = 1;
                     break;
                 }
 
-                /*A talált zöld pont távolságának vizsgálata.*/
+                /*checking the distance for the detected green point*/
                 if (array3D[j][k].isCurbPoint == 1 && array3D[j][k].alpha >= i && array3D[j][k].alpha < i + 1)
                 {
                     d = sqrt(pow(0 - array3D[j][k].p.x, 2) + pow(0 - array3D[j][k].p.y, 2));
@@ -317,12 +309,12 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
                     }
                 }
             }
-            /*A korábbi "break", kilépett az adott körvonalból, ez a továbbiakból is kilép, és jön a következő fok vizsgálata.*/
+            /*The previous "break" was used to exit the current circle, this one will exit all of them and proceed to the next angle.*/
             if (redPoints == 1)
                 break;
         }
 
-        /*A marker pontok hozzáadása a tömbhöz.*/
+        /*adding the marker points to the array*/
         if (ID1 != -1 && ID2 != -1)
         {
             markerPointsArray[cM][0] = array3D[ID1][ID2].p.x;
@@ -333,80 +325,86 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
         }
     }
 
-    /*-- 4. lépés: A csoportok feltöltése. --*/
+    /*-- step 4.: filling the groups --*/
     for (i = 0; i < index; i++)
     {
         for (j = 0; j < indexArray[i]; j++)
         {
             pt = array3D[i][j].p;
-            /*Az út pontok.*/
+            /*road points*/
             if (array3D[i][j].isCurbPoint == 1)
                 cloud_filtered_Road.push_back(pt);
 
-            /*A magas pontok.*/
+            /*high points*/
             else if (array3D[i][j].isCurbPoint == 2)
                 cloud_filtered_High.push_back(pt);
         }
     }
 
-    /*-- 5. lépés: A marker beállítása. --*/
-    /*Legyen minimum 3 pont, amit össze lehet kötni, különben hibák lépnének fel.*/
+    /*-- step 5.: setting up the marker --*/
+    /*There need to be at least 3 points to connect, otherwise errors might occur.*/
     if (cM > 2)
     {
-        /*Lehet olyan eset, hogy piros - zöld - prios (vagy fordítva) pont van egymás mellett.
-        Ez azért rossz, mert a zöld / piros marker (line strip) ebben az esetben csak 1 pont lesz.
-        Ez nem javasolt, ezért minden pontnak lennie kell egy azonos színű párjának.
-        A "markerPointsArray" tömb 3. oszlopában ha 1-es szerepel, akkor az a piros line strip-hez tartozik,
-        ellenkező esetben a zöldhöz.*/
+        /*There might be a case where points are in red-green-red (or the other way around) order next to each other.
+        This is bad is because the green / red marker (line strip) in this case will only consist of 1 point.
+        This is not recommended, every point needs to have a pair of the same color.
+        If the 3. column of "markerPointsArray" has the value 1 then it belongs to the red line strip,
+        otherwise it belongs to the green one.*/
 
-        /*If the first point is green, but the second is red, then the first is put inside the red line strip as well.*/
+        /*If the first point is green but the second one is red,
+        then the first one will be added to the red line strip too.*/
         if (markerPointsArray[0][3] == 0 && markerPointsArray[1][3] == 1)
             markerPointsArray[0][3] = 1;
 
-        /*If the last point is green, but the penultimate is red, then the last is put inside the red line strip as well.*/
+        /*If the last point is green but the second to last is red,
+        then the last one will be added to the red line strip too.*/
         if (markerPointsArray[cM - 1][3] == 0 && markerPointsArray[cM - 2][3] == 1)
             markerPointsArray[cM - 1][3] = 1;
 
-        /*If the first point is red, but the second is green, then the first is put inside the green line strip too.*/
+        /*If the first point is red but the second one is green,
+        then the first one will be added to the green line strip too.*/
         if (markerPointsArray[0][3] == 1 && markerPointsArray[1][3] == 0)
             markerPointsArray[0][3] = 0;
 
-        /*If the last point is red, but the penultimate is green, then the last is also put inside the green line strip.*/
+        /*If the last point is red but the second to last is green,
+        then the last one will be added to the green line strip too.*/
         if (markerPointsArray[cM - 1][3] == 1 && markerPointsArray[cM - 2][3] == 0)
             markerPointsArray[cM - 1][3] = 0;
 
-        /*Itt végig megyünk a pontokon, ha egy zöld pontot két piros fog közre, akkor az is a piros line strip-be kerül.
-        Az első kettő és az utolsó kettő pontot nem vizsgáljuk, ezek már be vannak állítva.*/
+        /*Here we iterate through all the points.
+        If a green point gets between two red ones, then it will be added to the red line strip too.
+        The first two and last two points are not checked - they were already set before.*/
         for (i = 2; i <= cM - 3; i++)
         {
             if (markerPointsArray[i][3] == 0 && markerPointsArray[i - 1][3] == 1 && markerPointsArray[i + 1][3] == 1)
                 markerPointsArray[i][3] = 1;
         }
 
-        /*Itt végig megyünk az összes ponton, ha egy piros pontot két zöld fog közre, akkor az is a zöld line strip-be kerül.
-        Az első kettő és az utolsó kettő pontot nem vizsgáljuk, ezek már be vannak állítva.*/
+        /*Here we iterate through all the points.
+        If a red point gets between two green ones, then it will be added to the green line strip too.
+        The first two and last two points are not checked - they were already set before.*/
         for (i = 2; i <= cM - 3; i++)
         {
             if (markerPointsArray[i][3] == 1 && markerPointsArray[i - 1][3] == 0 && markerPointsArray[i + 1][3] == 0)
                 markerPointsArray[i][3] = 0;
         }
 
-        visualization_msgs::MarkerArray ma;    /*Egy marker array, amiben a zöld / piros line strip-ek kerülnek.*/
-        visualization_msgs::Marker line_strip; /*Az adott zöld vagy piros szakasz / line strip.*/
-        geometry_msgs::Point point;            /*Az adott pont értékei. Ez tölti fel az adott line stip-et.*/
-        float zavg = 0.0;                      /*Átlagos z-érték (egyszerűsített polygonhoz)*/
+        visualization_msgs::MarkerArray ma;     //a marker array containing the green / red line strips
+        visualization_msgs::Marker line_strip;  //the current green or red section / line strip
+        geometry_msgs::Point point;             //point to fill the line strip with
+        float zavg = 0.0;                       //average z value (for the simplified polygon)
 
-        int lineStripID = 0; /*Az adott line strip ID-ja.*/
+        int lineStripID = 0;                    //ID of the given line strip
 
         line_strip.header.frame_id = params::fixedFrame;
         line_strip.header.stamp = ros::Time();
         line_strip.type = visualization_msgs::Marker::LINE_STRIP;
         line_strip.action = visualization_msgs::Marker::ADD;
 
-        /*Végigmegyünk a pontokon, amik a markert fogják alkotni.*/
+        /*We iterate through the points which will make up the marker.*/
         for (i = 0; i < cM; i++)
         {
-            /*Az adott pont hozzáadása egy "geometry_msgs::Point" típusú változóhoz.*/
+            /*adding the given point to a "geometry_msgs::Point" type variable*/
             point.x = markerPointsArray[i][0];
             point.y = markerPointsArray[i][1];
             point.z = markerPointsArray[i][2];
@@ -414,22 +412,22 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
             zavg += point.z;
             zavg /= i+1;
 
-            /*Az első pont hozzáadása az adott line strip-hez.
-            Az első pontnál semmilyen feltétel nem kell.*/
+            /*Adding the first point to the current line strip.
+            No conditions need to be met for the first point.*/
             if (i == 0)
             {
                 line_strip.points.push_back(point);
                 line += xy(point.x,point.y);
             }
 
-            /*Ha a következő pont is ugyanabba a csoportba (piros vagy zöld) tartozik, mint az előző,
-            akkor ezt is hozzáadjuk az adott line strip-hez.*/
+            /*If the next point is from the same group (red or green) as the previous one
+            then it will be added to the line strip aswell.*/
             else if (markerPointsArray[i][3] == markerPointsArray[i - 1][3])
             {
                 line_strip.points.push_back(point);
                 line += xy(point.x,point.y);
 
-                /*Ebben az "else if" feltételben fogjuk elérni az utolsó pontot, itt elkészül az utolsó line strip.*/
+                /*In this "else if" section we will reach the last point and the last line strip will be created.*/
                 if (i == cM - 1)
                 {
                     line_strip.id = lineStripID;
@@ -447,7 +445,7 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
                     line_strip.scale.y = 0.5;
                     line_strip.scale.z = 0.5;
 
-                    /*A line strip színének a beállítása.*/
+                    /*setting the color of the line strip*/
                     if (markerPointsArray[i][3] == 0)
                     {
                         line_strip.color.a = 1.0;
@@ -479,20 +477,20 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
                         }
                     }
 
-                    ma.markers.push_back(line_strip); /*A line strip hozzáadása a marker array-hez.*/
-                    line_strip.points.clear();        /*Az utolsó line strip-ből is töröljük a pontokat, feleslegesen ne tárolódjon.*/
+                    ma.markers.push_back(line_strip); //adding the line strip to the marker array
+                    line_strip.points.clear();        //We clear the points from the last line strip as there's no need for them anymore.
                     boost::geometry::clear(line);
                 }
             }
 
-            /*Csoportváltozás --> pirosról - zöldre.
-            Ilyenkor még piros marker köti össze a két pontot, szóval hozzáadjuk a pontot az adott line strip-hez.*/
+            /*change of category: red -> green
+            The line joining the two points is still red, so we add the point to the given line strip.*/
             else if (markerPointsArray[i][3] != markerPointsArray[i - 1][3] && markerPointsArray[i][3] == 0)
             {
                 line_strip.points.push_back(point);
                 line += xy(point.x,point.y);
 
-                /*A következő pontok már új line strip-hez fognak tartozni, szóval itt elkészül az egyik piros.*/
+                /*The following points belong to a new line strip - a red one is being made here.*/
                 line_strip.id = lineStripID;
                 lineStripID++;
 
@@ -530,19 +528,19 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
                     }
                 }
 
-                ma.markers.push_back(line_strip);   /*A line strip hozzáadása a marker array-hez.*/
-                line_strip.points.clear();          /*A benne lévő pontok már nem kellenek.*/
+                ma.markers.push_back(line_strip);   //adding the line strip to the marker array
+                line_strip.points.clear();          //the points are not needed anymore
                 boost::geometry::clear(line);
-                line_strip.points.push_back(point); /*A következő zöld line strip-nél is szükség van erre a pontra, szóval hozzáadjuk.*/
+                line_strip.points.push_back(point); //This point is needed for the next line strip aswell, so we add it.
                 line += xy(point.x,point.y);
             }
 
-            /*Csoportváltozás --> zöldről - pirosra.
-            Előszőr beállítjuk a zöld line stip-et, majd az utolsó pontot hozzáadjuk a piroshoz is,
-            mivel zöld és piros pont között mindig piros line srip van.*/
+            /*change of category: green -> red
+            First we set up the green line strip, then we add the last point to the red one aswell,
+            since there is always a red line strip between a green and a red point.*/
             else if (markerPointsArray[i][3] != markerPointsArray[i - 1][3] && markerPointsArray[i][3] == 1)
             {
-                /*A zöld marker.*/
+                /*the green marker*/
                 line_strip.id = lineStripID;
                 lineStripID++;
 
@@ -580,18 +578,18 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
                     }
                 }
 
-                ma.markers.push_back(line_strip); /*A line strip hozzáadása a marker array-hez.*/
-                line_strip.points.clear();        /*A benne lévő pontok már nem kellenek.*/
+                ma.markers.push_back(line_strip);   //adding the line strip to the marker array
+                line_strip.points.clear();          //These points are not needed anymore.
                 boost::geometry::clear(line);
 
-                /*A követkető piros line srip-hez szükség van az előző pontra is.*/
+                /*The previous point is required for the next line strip aswell.*/
                 point.x = markerPointsArray[i - 1][0];
                 point.y = markerPointsArray[i - 1][1];
                 point.z = markerPointsArray[i - 1][2];
                 line_strip.points.push_back(point);
                 line += xy(point.x,point.y);
 
-                /*A követkető piros line srip-hez szükség van a jelenlegi pontra.*/
+                /*The current point is required for the next line strip aswell.*/
                 point.x = markerPointsArray[i][0];
                 point.y = markerPointsArray[i][1];
                 point.z = markerPointsArray[i][2];
@@ -604,15 +602,14 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
         {
             for (int seg=0; seg < ma.markers.size(); seg++)
             {
-                for (int mz = 0; mz < ma.markers[seg].points.size(); mz++) /*Egyszerűsített polygon z-koordinátáinak megadása átlagból. */
+                for (int mz = 0; mz < ma.markers[seg].points.size(); mz++)  //setting the height of the polygon from the average height of points
                 {
                     ma.markers[seg].points[mz].z = zavg;
                 }
             }
-            /* polyz = zavg; /* Be- és kikapcsolással a konstans z-érték az átlagérték alapján beállítja magát. (kell?) */
         }
 
-        /*érvényét vesztett markerek eltávolítása*/
+        /*removal of obsolete markers*/
         line_strip.action = visualization_msgs::Marker::DELETE;
         for (int del = lineStripID; del<ghostcount; del++)
         {
@@ -621,7 +618,7 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
         }
         ghostcount = lineStripID;
 
-        /*A marker array hírdetése.*/
+        /*publishing the marker array*/
         pub_marker.publish(ma);
     }
 
@@ -632,15 +629,15 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
     }
     
 
-    /*Road és High topic header.*/
+    /*Road and High topic header*/
     cloud_filtered_Road.header = cloud.header;
     cloud_filtered_ProbablyRoad.header = cloud.header;
     cloud_filtered_High.header = cloud.header;
     cloud_filtered_Box->header = cloud.header;
 
-    /*Publish.*/
-    pub_road.publish(cloud_filtered_Road); /*Szűrt pontok (úttest).*/
-    pub_high.publish(cloud_filtered_High); /*Szűrt pontok (nem úttest).*/
-    pub_box.publish(cloud_filtered_Box);  /*A vizsgált terület, összes pontja.*/
+    /*publishing*/
+    pub_road.publish(cloud_filtered_Road);  //filtered points (driveable road)
+    pub_high.publish(cloud_filtered_High);  //filtered points (non-driveable road)
+    pub_box.publish(cloud_filtered_Box);    //filtered points (non-road)
     pub_pobroad.publish(cloud_filtered_ProbablyRoad);
 }

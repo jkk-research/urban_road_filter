@@ -1,18 +1,18 @@
 #include "urban_road_filter/data_structures.hpp"
 
-int params::xDirection;                                       /*A vakfolt levágás milyen irányú.*/
-bool params::blind_spots;                                     /*Vakfolt javító algoritmus.*/
-float params::beamZone;                                       /*A vizsgált sugárzóna mérete.*/    
+int params::xDirection;     //direction of the blindspot cutoff
+bool params::blind_spots;   //enable blindspot correction
+float params::beamZone;     //size of hte examined beamzone
 
 void Detector::blindSpots(std::vector<std::vector<Point3D>>& array3D,int index,int* indexArray,float* maxDistance){
-    /*Vakfolt keresés:
-    Megvizsgáljuk a második körvonalat. (Az elsővel pontatlan.)
-    Főleg a [90°-180° --- 180°-270°] tartomány és a [0°-90° --- 270°-360°] tartomány a lényeg, az autó két oldalán.
-    Mind a kettő tartományban keresünk 2db magaspontot. Ha az adott tartományban az első körvonalon van két magaspont,
-    a közte lévő terület nagy valószínűséggel egy vakfolt lesz.*/
-    float q1 = 0, q2 = 180, q3 = 180, q4 = 360; /*A kör négy része. (1. 2. 3. 4. negyed.)*/
-    int c1 = -1, c2 = -1, c3 = -1, c4 = -1;     /*A talált pontok ID-ja az első körvonalon.*/
-    int i,j,k,l;                                /*Segéd változók*/
+    /*Blind spot detection:
+    We examine the second arc. (First one gives inaccurate results.)
+    The intervals (segments) [90°-180° --- 180°-270°] and [0°-90° --- 270°-360°] are of greatest significance (at the two sides of the car).
+    We search for 2 pieces of high points in both intervals.
+    If there are two high points on the first arc in the interval, then the area between has a high chance of being a blind spot.*/
+    float q1 = 0, q2 = 180, q3 = 180, q4 = 360; //the four segments (quarters) of the arc
+    int c1 = -1, c2 = -1, c3 = -1, c4 = -1;     //ID of the points found on the first arc
+    int i,j,k,l;                                //"temporary" variables
 
     if (params::blind_spots)
     {
@@ -56,25 +56,25 @@ void Detector::blindSpots(std::vector<std::vector<Point3D>>& array3D,int index,i
         }
     }
 
-    float arcDistance;   /*Körív mérete, a megadott foknál. Fontos minden körön, ugyanakkora körív méretet vizsgálni.*/
-    int notRoad;         /*Ha az adott köríven, az adott szakaszon, található magaspont, akkor 1-es értéket vesz fel, amúgy 0-át.*/
-    int blindSpot;       /*Vakfoltok az autó mellett.*/
-    float currentDegree; /*Az aktuális köríven, a szög nagysága.*/
+    float arcDistance;      //arc length at the given angle - It is important to use the same arc length to examine every arc.
+    int notRoad;            //If there is a high point in the given segment on the given arc, then value 1 will be assigned to it, 0 otherwise.
+    int blindSpot;          //blind spots by the car
+    float currentDegree;    //the angle on the current arc
 
-    /*A körív méret meghatározása.*/
+    /*determining arc length*/
     arcDistance = ((maxDistance[0] * M_PI) / 180) * params::beamZone;
 
-    /*0°-tól 360° - beamZone-ig.*/
+    /*from 0° to [360° - beamZone]*/
     for (i = 0; i <= 360 - params::beamZone; i++)
     {
         blindSpot = 0;
 
         if (params::blind_spots)
         {
-            /*Ha ezek a feltételek teljesülnek, akkor egy vakfoltba léptünk és itt nem vizsgálódunk.*/
+            /*If these conditions are met, then we have reached a blind spot and we stop checking.*/
             if (params::xDirection == 0)
             {
-                /*+-X irányba is vizsgáljuk a pontokat.*/
+                /*evaluating the points in both directions (+-X)*/
                 if ((q1 != 0 && q4 != 360 && (i <= q1 || i >= q4)) || (q2 != 180 && q3 != 180 && i >= q2 && i <= q3))
                 {
                     blindSpot = 1;
@@ -82,7 +82,7 @@ void Detector::blindSpots(std::vector<std::vector<Point3D>>& array3D,int index,i
             }
             else if (params::xDirection == 1)
             {
-                /*+X irányba vizsgáljuk a pontokat.*/
+                /*evaluating the points in +X direction.*/
                 if ((q2 != 180 && i >= q2 && i <= 270) || (q1 != 0 && (i <= q1 || i >= 270)))
                 {
                     blindSpot = 1;
@@ -90,7 +90,7 @@ void Detector::blindSpots(std::vector<std::vector<Point3D>>& array3D,int index,i
             }
             else
             {
-                /*-X vizsgáljuk a pontokat.*/
+                /*evaluating the points in -X direction.*/
                 if ((q4 != 360 && (i >= q4 || i <= 90)) || (q3 != 180 && i <= q3 && i >= 90))
                 {
                     blindSpot = 1;
@@ -100,15 +100,15 @@ void Detector::blindSpots(std::vector<std::vector<Point3D>>& array3D,int index,i
 
         if (blindSpot == 0)
         {
-            /*Alap beállítás, hogy az adott szakaszon nincs magaspont.*/
+            /*By default settings there's no high point in the given segment.*/
             notRoad = 0;
 
-            /*Az első kör adott szakaszának vizsgálata.*/
+            /*evaluation of the given segment of the first arc*/
             for (j = 0; array3D[0][j].alpha <= i + params::beamZone && j < indexArray[0]; j++)
             {
                 if (array3D[0][j].alpha >= i)
                 {
-                    /*Nem vizsgáljuk tovább az adott szakaszt, ha találunk benne magaspontot.*/
+                    /*The segment needs no further checking if a high point is found.*/
                     if (array3D[0][j].isCurbPoint == 2)
                     {
                         notRoad = 1;
@@ -117,10 +117,10 @@ void Detector::blindSpots(std::vector<std::vector<Point3D>>& array3D,int index,i
                 }
             }
 
-            /*Ha nem találtunk az első kör, adott szakaszán magaspontot, továbbléphetünk a következő körre.*/
+            /*If no high point is found in the given segment of the first arc, we can proceed to the next arc.*/
             if (notRoad == 0)
             {
-                /*Az első kör szakaszát elfogadjuk.*/
+                /*We accept the segment of the first arc.*/
                 for (j = 0; array3D[0][j].alpha <= i + params::beamZone && j < indexArray[0]; j++)
                 {
                     if (array3D[0][j].alpha >= i)
@@ -129,10 +129,10 @@ void Detector::blindSpots(std::vector<std::vector<Point3D>>& array3D,int index,i
                     }
                 }
 
-                /*A további körök vizsgálata.*/
+                /*checking the rest of the arcs*/
                 for (k = 1; k < index; k++)
                 {
-                    /*Új szöget kell meghatározni, hogy a távolabbi körvonalakon is, ugyanakkora körív hosszt vizsgáljunk.*/
+                    /*A new angle needs to be defined to get the same arc length at every radius.*/
                     if (i == 360 - params::beamZone)
                     {
                         currentDegree = 360;
@@ -142,12 +142,12 @@ void Detector::blindSpots(std::vector<std::vector<Point3D>>& array3D,int index,i
                         currentDegree = i + arcDistance / ((maxDistance[k] * M_PI) / 180);
                     }
 
-                    /*Az új kör pontjait vizsgáljuk.*/
+                    /*checking the points of the new arc*/
                     for (l = 0; array3D[k][l].alpha <= currentDegree && l < indexArray[k]; l++)
                     {
                         if (array3D[k][l].alpha >= i)
                         {
-                            /*Nem vizsgáljuk tovább az adott szakaszt, ha találunk benne magaspontot.*/
+                            /*No further processing is needed if a high point is found within the segment.*/
                             if (array3D[k][l].isCurbPoint == 2)
                             {
                                 notRoad = 1;
@@ -156,11 +156,11 @@ void Detector::blindSpots(std::vector<std::vector<Point3D>>& array3D,int index,i
                         }
                     }
 
-                    /*A többi kört nem vizsgáljuk, ha a sugár, elakadt egy magasponton.*/
+                    /*The rest of the arcs do not need to be checked if the beam stops at a high point.*/
                     if (notRoad == 1)
                         break;
 
-                    /*Egyébként, elfogadjuk az adott kör, adott szakaszát.*/
+                    /*else: the given segment of the given arc is accepted*/
                     for (l = 0; array3D[k][l].alpha <= currentDegree && l < indexArray[k]; l++)
                     {
                         if (array3D[k][l].alpha >= i)
@@ -173,17 +173,17 @@ void Detector::blindSpots(std::vector<std::vector<Point3D>>& array3D,int index,i
         }
     }
 
-    /*Ugyanaz, mint az előző, csak itt 360°-tól 0° + beamZone-ig vizsgáljuk a pontokat.*/
+    /*same as before but we check from 360° to [0° + beamZone] this time*/
     for (i = 360; i >= 0 + params::beamZone; --i)
     {
         blindSpot = 0;
 
         if (params::blind_spots)
         {
-            /*Ha ezek a feltételek teljesülnek, akkor egy vakfoltba léptünk és itt nem vizsgálódunk.*/
+            /*If these conditions are met, then we have reached a blind spot and we stop checking.*/
             if (params::xDirection == 0)
             {
-                /*+-X irányba is vizsgáljuk a pontokat.*/
+                /*evaluating the points in both directions (+-X)*/
                 if ((q1 != 0 && q4 != 360 && (i <= q1 || i >= q4)) || (q2 != 180 && q3 != 180 && i >= q2 && i <= q3))
                 {
                     blindSpot = 1;
@@ -191,7 +191,7 @@ void Detector::blindSpots(std::vector<std::vector<Point3D>>& array3D,int index,i
             }
             else if (params::xDirection == 1)
             {
-                /*+X irányba vizsgáljuk a pontokat.*/
+                /*evaluating the points in +X direction.*/
                 if ((q2 != 180 && i >= q2 && i <= 270) || (q1 != 0 && (i <= q1 || i >= 270)))
                 {
                     blindSpot = 1;
@@ -199,7 +199,7 @@ void Detector::blindSpots(std::vector<std::vector<Point3D>>& array3D,int index,i
             }
             else
             {
-                /*-X vizsgáljuk a pontokat.*/
+                /*evaluating the points in -X direction.*/
                 if ((q4 != 360 && (i >= q4 || i <= 90)) || (q3 != 180 && i <= q3 && i >= 90))
                 {
                     blindSpot = 1;
@@ -209,15 +209,15 @@ void Detector::blindSpots(std::vector<std::vector<Point3D>>& array3D,int index,i
 
         if (blindSpot == 0)
         {
-            /*Alap beállítás, hogy az adott szakaszon nincs magaspont.*/
+            /*By default settings there's no high point in the given segment.*/
             notRoad = 0;
 
-            /*Az első kör adott szakaszának vizsgálata.*/
+            /*evaluation of the given segment of the first arc*/
             for (j = indexArray[0] - 1; array3D[0][j].alpha >= i - params::beamZone && j >= 0; --j)
             {
                 if (array3D[0][j].alpha <= i)
                 {
-                    /*Nem vizsgáljuk tovább az adott szakaszt, ha találunk benne magaspontot.*/
+                    /*The segment needs no further checking if a high point is found.*/
                     if (array3D[0][j].isCurbPoint == 2)
                     {
                         notRoad = 1;
@@ -226,10 +226,10 @@ void Detector::blindSpots(std::vector<std::vector<Point3D>>& array3D,int index,i
                 }
             }
 
-            /*Ha nem találtunk az első kör, adott szakaszán magaspontot, továbbléphetünk a következő körre.*/
+            /*If no high point is found in the given segment of the first arc, we can proceed to the next arc.*/
             if (notRoad == 0)
             {
-                /*Az első kör szakaszát elfogadjuk.*/
+                /*We accept the segment of the first arc.*/
                 for (j = indexArray[0] - 1; array3D[0][j].alpha >= i - params::beamZone && j >= 0; --j)
                 {
                     if (array3D[0][j].alpha <= i)
@@ -238,10 +238,10 @@ void Detector::blindSpots(std::vector<std::vector<Point3D>>& array3D,int index,i
                     }
                 }
 
-                /*A további körök vizsgálata.*/
+                /*checking the rest of the arcs*/
                 for (k = 1; k < index; k++)
                 {
-                    /*Új szöget kell meghatározni, hogy a távolabbi körvonalakon is, ugyanakkora körív hosszt vizsgáljunk.*/
+                    /*A new angle needs to be defined to get the same arc length at every radius.*/
                     if (i == 0 + params::beamZone)
                     {
                         currentDegree = 0;
@@ -251,12 +251,12 @@ void Detector::blindSpots(std::vector<std::vector<Point3D>>& array3D,int index,i
                         currentDegree = i - arcDistance / ((maxDistance[k] * M_PI) / 180);
                     }
 
-                    /*Az új kör pontjait vizsgáljuk.*/
+                    /*checking the points of the new arc*/
                     for (l = indexArray[k] - 1; array3D[k][l].alpha >= currentDegree && l >= 0; --l)
                     {
                         if (array3D[k][l].alpha <= i)
                         {
-                            /*Nem vizsgáljuk tovább az adott szakaszt, ha találunk benne magaspontot.*/
+                            /*The segment needs no further processing if a high point is found.*/
                             if (array3D[k][l].isCurbPoint == 2)
                             {
                                 notRoad = 1;
@@ -265,11 +265,11 @@ void Detector::blindSpots(std::vector<std::vector<Point3D>>& array3D,int index,i
                         }
                     }
 
-                    /*A többi kört nem vizsgáljuk, ha a sugár, elakadt egy magasponton.*/
+                    /*The rest of the arcs do not need to be checked if the beam stops at a high point.*/
                     if (notRoad == 1)
                         break;
 
-                    /*Egyébként, elfogadjuk az adott kör, adott szakaszát.*/
+                    /*else: the given segment of the given arc is accepted*/
                     for (l = indexArray[k] - 1; array3D[k][l].alpha >= currentDegree && l >= 0; --l)
                     {
                         if (array3D[k][l].alpha <= i)

@@ -1,6 +1,6 @@
 #include "urban_road_filter/data_structures.hpp"
 
-/*A paraméterek beállítása.*/
+/*parameter setup*/
 void paramsCallback(urban_road_filter::LidarFiltersConfig &config, uint32_t level){
     params::fixedFrame = config.fixed_frame;
     params::topicName = config.topic_name;
@@ -36,11 +36,11 @@ void paramsCallback(urban_road_filter::LidarFiltersConfig &config, uint32_t leve
 int main(int argc, char **argv)
 {
 
-    /*Az ROS inicializálása.*/
+    /*initializing ROS*/
     ros::init(argc, argv, "urban_road_filt");
     ROS_INFO("Initializing %s", ros::this_node::getName().c_str());
 
-    /*A GUI felülethez szükséges sorok.*/
+    /*code needed for GUI*/
     dynamic_reconfigure::Server<urban_road_filter::LidarFiltersConfig> server;
     dynamic_reconfigure::Server<urban_road_filter::LidarFiltersConfig>::CallbackType f;
     f = boost::bind(&paramsCallback, _1, _2);
