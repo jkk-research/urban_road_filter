@@ -22,6 +22,31 @@ float       params::polyz = -1.5;           //manually set z-coordinate (output 
 
 int         ghostcount = 0;                 //counter variable helping to remove obsolete markers (ghosts)
 
+void marker_init(visualization_msgs::Marker& m)
+{
+    m.pose.position.x = 0;
+    m.pose.position.y = 0;
+    m.pose.position.z = 0;
+
+    m.pose.orientation.x = 0.0;
+    m.pose.orientation.y = 0.0;
+    m.pose.orientation.z = 0.0;
+    m.pose.orientation.w = 1.0;
+
+    m.scale.x = 0.5;
+    m.scale.y = 0.5;
+    m.scale.z = 0.5;
+}
+
+inline std_msgs::ColorRGBA setcolor(float r, float g, float b, float a)
+{
+    std_msgs::ColorRGBA c;
+    c.r = r;
+    c.g = g;
+    c.b = b;
+    c.a = a;
+    return c;
+}
 
 Detector::Detector(ros::NodeHandle* nh){
     /*subscribing to the given topic*/
@@ -431,34 +456,16 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
                 if (i == cM - 1)
                 {
                     line_strip.id = lineStripID;
-
-                    line_strip.pose.position.x = 0;
-                    line_strip.pose.position.y = 0;
-                    line_strip.pose.position.z = 0;
-
-                    line_strip.pose.orientation.x = 0.0;
-                    line_strip.pose.orientation.y = 0.0;
-                    line_strip.pose.orientation.z = 0.0;
-                    line_strip.pose.orientation.w = 1.0;
-
-                    line_strip.scale.x = 0.5;
-                    line_strip.scale.y = 0.5;
-                    line_strip.scale.z = 0.5;
+                    marker_init(line_strip);
 
                     /*setting the color of the line strip*/
                     if (markerPointsArray[i][3] == 0)
                     {
-                        line_strip.color.a = 1.0;
-                        line_strip.color.r = 0.0;
-                        line_strip.color.g = 1.0;
-                        line_strip.color.b = 0.0;
+                        line_strip.color = setcolor(0.0, 1.0, 0.0, 1.0); //green
                     }
                     else
                     {
-                        line_strip.color.a = 1.0;
-                        line_strip.color.r = 1.0;
-                        line_strip.color.g = 0.0;
-                        line_strip.color.b = 0.0;
+                        line_strip.color = setcolor(1.0, 0.0, 0.0, 1.0); //red
                     }
                     
                     if (params::polysimp_allow)
@@ -494,23 +501,9 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
                 line_strip.id = lineStripID;
                 lineStripID++;
 
-                line_strip.pose.position.x = 0;
-                line_strip.pose.position.y = 0;
-                line_strip.pose.position.z = 0;
+                marker_init(line_strip);
 
-                line_strip.pose.orientation.x = 0.0;
-                line_strip.pose.orientation.y = 0.0;
-                line_strip.pose.orientation.z = 0.0;
-                line_strip.pose.orientation.w = 1.0;
-
-                line_strip.scale.x = 0.5;
-                line_strip.scale.y = 0.5;
-                line_strip.scale.z = 0.5;
-
-                line_strip.color.a = 1.0;
-                line_strip.color.r = 1.0;
-                line_strip.color.g = 0.0;
-                line_strip.color.b = 0.0;
+                line_strip.color = setcolor(1.0, 0.0, 0.0, 1.0); //red
 
                 if (params::polysimp_allow)
                 {
@@ -544,23 +537,9 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
                 line_strip.id = lineStripID;
                 lineStripID++;
 
-                line_strip.pose.position.x = 0;
-                line_strip.pose.position.y = 0;
-                line_strip.pose.position.z = 0;
+                marker_init(line_strip);
 
-                line_strip.pose.orientation.x = 0.0;
-                line_strip.pose.orientation.y = 0.0;
-                line_strip.pose.orientation.z = 0.0;
-                line_strip.pose.orientation.w = 1.0;
-
-                line_strip.scale.x = 0.5;
-                line_strip.scale.y = 0.5;
-                line_strip.scale.z = 0.5;
-
-                line_strip.color.a = 1.0;
-                line_strip.color.r = 0.0;
-                line_strip.color.g = 1.0;
-                line_strip.color.b = 0.0;
+                line_strip.color = setcolor(0.0, 1.0, 0.0, 1.0); //green
 
                 if (params::polysimp_allow)
                 {
