@@ -114,8 +114,6 @@ class Detector{
 
     void quickSort(std::vector<std::vector<Point3D>>& array3D, int arc, int low, int high);
 
-    //void filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud);
-
     void filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud);
 
     void starShapedSearch(std::vector<Point2D>& array2D);
