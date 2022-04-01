@@ -71,7 +71,7 @@ void beamfunc(const int tid, std::vector<Point2D> &array2D) //beam algorithm (fi
         while (i < s)   //iterating through points in the current sector (instead of a for loop - since 's' is not constant and 'i' needs to be incremented conditionally)
         {
             c = abs(beams[tid].d * array2D[beams[tid].p[i].id].p.y);                        //x-coordinate of the beam's centerline at the point (at the "height" of its y-coordinate)
-            if ((c - beams[tid].o) < array2D[beams[tid].p[i].id].p.x < (c + beams[tid].o))  //whether it is inside the beam (by checking only x values on the line/"height" of the point's y-coordinate: whether the [x-coordinate of the] point falls between the [x-coordinates of the] two sides/borders of the beam
+            if ((c - beams[tid].o) < array2D[beams[tid].p[i].id].p.x && array2D[beams[tid].p[i].id].p.x < (c + beams[tid].o))  //whether it is inside the beam (by checking only x values on the line/"height" of the point's y-coordinate: whether the [x-coordinate of the] point falls between the [x-coordinates of the] two sides/borders of the beam
             {
                 i++;    //okay, next one
             }
@@ -87,7 +87,7 @@ void beamfunc(const int tid, std::vector<Point2D> &array2D) //beam algorithm (fi
         while (i < s)
         {
             c = abs(beams[tid].d * array2D[beams[tid].p[i].id].p.x);
-            if ((c - beams[tid].o) < array2D[beams[tid].p[i].id].p.y < (c + beams[tid].o))
+            if ((c - beams[tid].o) < array2D[beams[tid].p[i].id].p.y && array2D[beams[tid].p[i].id].p.y < (c + beams[tid].o))
             {
                 i++;
             }
