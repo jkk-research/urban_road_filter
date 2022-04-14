@@ -57,6 +57,9 @@ Detector::Detector(ros::NodeHandle* nh){
     pub_box = nh->advertise<pcl::PCLPointCloud2>("roi", 1); // ROI - region of interest
     pub_pobroad = nh->advertise<pcl::PCLPointCloud2>("road_probably", 1);
     pub_marker = nh->advertise<visualization_msgs::MarkerArray>("road_marker", 1);
+    /*left and right borders of the road*/
+    pub_mleft = nh->advertise<visualization_msgs::Marker>("left_marker", 1);
+    pub_mright = nh->advertise<visualization_msgs::Marker>("right_marker", 1);
 
     Detector::beam_init();
 
@@ -365,6 +368,32 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
                 cloud_filtered_High.push_back(pt);
         }
     }
+
+    visualization_msgs::Marker mleft, mright;
+
+    mleft.header.frame_id = params::fixedFrame;
+    mleft.header.stamp = ros::Time();
+    //mleft.type = visualization_msgs::Marker::SPHERE_LIST;
+    mleft.type = visualization_msgs::Marker::LINE_STRIP;
+    mleft.action = visualization_msgs::Marker::ADD;
+    marker_init(mleft);
+    mleft.color = setcolor(0.5, 0.0, 0.5, 1.0);
+    mleft.id = 1001;
+    mleft.lifetime = ros::Duration(0);
+
+    mright.header.frame_id = params::fixedFrame;
+    mright.header.stamp = ros::Time();
+    //mright.type = visualization_msgs::Marker::SPHERE_LIST;
+    mright.type = visualization_msgs::Marker::LINE_STRIP;
+    mright.action = visualization_msgs::Marker::ADD;
+    marker_init(mright);
+    mright.color = setcolor(0.0, 0.5, 0.5, 1.0);
+    mright.id = 1002;
+    mright.lifetime = ros::Duration(0);
+
+    Detector::getLR(array3D, 90, mleft.points, mright.points, 0);
+    pub_mleft.publish(mleft);               //left border of the road (marker)
+    pub_mright.publish(mright);             //right border of the road (marker)
 
     /*-- step 5.: setting up the marker --*/
     /*There need to be at least 3 points to connect, otherwise errors might occur.*/

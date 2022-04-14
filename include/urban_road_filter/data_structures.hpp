@@ -125,6 +125,8 @@ class Detector{
     void zZeroMethod(std::vector<std::vector<Point3D>>& array3D,int index,int* indexArray);
 
     void blindSpots(std::vector<std::vector<Point3D>>& array3D,int index,int* indexArray,float* maxDistance);
+
+    void getLR(const std::vector<std::vector<Point3D>>& pts, float angle, std::vector<geometry_msgs::Point>& leftm, std::vector<geometry_msgs::Point>& rightm, int arc);
     
     private:
     ros::Publisher pub_road;        
@@ -132,6 +134,8 @@ class Detector{
     ros::Publisher pub_box;         
     ros::Publisher pub_pobroad;    
     ros::Publisher pub_marker;      
+    ros::Publisher pub_mleft;
+    ros::Publisher pub_mright;
 
     ros::Subscriber sub;
 
