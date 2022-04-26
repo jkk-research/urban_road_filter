@@ -7,6 +7,7 @@ float angmin = 3;
 float cmax = 15;
 int navg = 5;
 float ddmax = 45 /180*M_PI;
+float difmax = 2;
 
 inline float psdist(geometry_msgs::Point& a, geometry_msgs::Point& b)
 {
@@ -123,17 +124,108 @@ void getraw(const std::vector<std::vector<Point3D>>&  pts, float angle, std::vec
     return;
 }
 
+
 void trimmer(std::vector<geometry_msgs::Point>& pts)
 {
-    float dx, dy, d, d0 = 4, s=pts.size()-1;
-    for (int i=1; i<s; i++)
+    int i, s = pts.size()-1;
+    std::vector<float> a, d, h;
+    if (s>1)
     {
-        dx = pts[i+1].x-pts[i].x;
-        dy = pts[i+1].y-pts[i].y;
-        d = atan2(dy, dx);
-        //if (abs(d-d0) > ddmax) pts.erase(pts.begin()+i);
+        float dx, dy, an, ap, a_avg = 0, a_dev = 0, d_avg = 0, d_2dev = 0, dev;
+        dx = pts[1].x - pts[0].x;
+        dy = pts[1].y - pts[0].y;
+        ap = abs(atan2(dy, dx));
+        for (int i=0; i<s; i++)
+        {
+            d.push_back(sqrt(psdist(pts[i+1], pts[i])));
+            dx = pts[i+1].x - pts[i].x;
+            dy = pts[i+1].y - pts[i].y;
+            an = atan2(dy, dx);
+            a.push_back(an - ap);
+            ap = an;
+            printf("\n%3d: %7.3f", i, d[i]);
+        }
+        a.push_back(0);
+        for (i=0; i<s; i++) d_avg += d[i];
+        d_avg /= s;
+        for (i=0; i<s; i++) d_2dev += abs(d[i] - d_avg);
+        d_2dev /= s * 0.5;
+        s++;
+        for (i=0; i<s; i++) a_dev += abs(a[i] - a_avg);
+        a_dev /= s;
+        for (i=0; i<s; i++) a_avg += a[i];
+        a_avg /= s;
+        for (i=0; i<s; i++) a_dev += abs(a[i] - a_avg);
+        a_dev /= s;
+        s--;
+        h.push_back(abs(d.front() * 2 - d_2dev) * abs(a.front() - a_dev));
+        for (i=1; i<s; i++) h.push_back(abs(d[i-1] + d[i] - d_2dev) * abs(a[i] - a_dev));
+        h.push_back(abs(d.back() * 2 - d_2dev) * abs(a.back() - a_dev));
+        s++;
+    }
+    int j = 0;
+    i = 0;
+    //printf("\n avg: %7.3f, dev: %7.3f", avg, dev);
+    while (i<s)
+    {
+        printf("\n%2d: %7.3f", j, h[j]);
+        //printf("\n%3d: %7.3f (%3d/%3d)", j, d[j], i, s);
+        if (h[j] > 10) //dev * difmax)
+        {
+            //pts.erase(pts.begin()+i);
+            pts[i].z=5;
+            printf(" -");
+            /*
+            s--;
+            j++;
+            */
+            //printf("\n[%2d: %7.3f (%3d/%3d)]", j, d[j], i, s);
+        }
+        i++;
+        j++;
     }
 }
+
+
+// void trimmer(std::vector<geometry_msgs::Point>& pts)
+// {
+//     float dx, dy, avg = 0, dev = 0;
+//     int i, j, s=pts.size()-1;
+//     std::vector<float> d;
+//     for (int i=0; i<s; i++)
+//     {
+//         dx = pts[i+1].x-pts[i].x;
+//         dy = pts[i+1].y-pts[i].y;
+//         d.push_back(atan2(dy, dx));
+//         printf("\n%3d: %7.3f", i, d[i]);
+//     }
+//     s = d.size();
+//     for (i=0; i<s; i++) avg += d[i];
+//     avg /= s;
+//     for (i=0; i<s; i++) dev += abs(d[i] - avg);
+//     dev /= s;
+//     i=2;
+//     j=1;
+//     s++;
+//     printf("\n avg: %7.3f, dev: %7.3f", avg, dev);
+//     while (i<s)
+//     {
+//         printf("\n%3d: %7.3f (%3d/%3d)", j, d[j], i, s);
+//         if (abs(d[j] - avg) > dev * difmax)
+//         {
+//             //pts.erase(pts.begin()+i);
+//             pts[i-1].z=5;
+//             printf(" -");
+//             /*
+//             s--;
+//             j++;
+//             */
+//             printf("\n[%2d: %7.3f (%3d/%3d)]", j, d[j], i, s);
+//         }
+//         i++;
+//         j++;
+//     }
+// }
 
 std::vector<std::vector<geometry_msgs::Point>> chopper(std::vector<geometry_msgs::Point>& pts)
 {
@@ -225,11 +317,13 @@ void liner(std::vector<std::vector<geometry_msgs::Point>>& chopped, std::vector<
     printf("\n\n");
 }
 
-void Detector::getLR(const std::vector<std::vector<Point3D>>&  pts, float angle, std::vector<geometry_msgs::Point>& leftm, std::vector<geometry_msgs::Point>& rightm, int arc=0)
+void Detector::getLR(const std::vector<std::vector<Point3D>>& pts, float angle, std::vector<geometry_msgs::Point>& leftm, std::vector<geometry_msgs::Point>& rightm, int arc=0)
 {
     getraw(pts, angle, leftm, rightm, 0);
     //printf("\n\n----------\n\n");
+    printf("\n\nL");
     trimmer(leftm);
+    printf("\n\nR");
     trimmer(rightm);
 
     /*
