@@ -9,12 +9,77 @@ int navg = 5;
 float ddmax = 45 /180*M_PI;
 float difmax = 2;
 
-inline float psdist(geometry_msgs::Point& a, geometry_msgs::Point& b)
+inline float psdist(geometry_msgs::Point& a, geometry_msgs::Point& b) //squared distance between points
 {
     return ((b.x-a.x)*(b.x-a.x) + (b.y-a.y)*(b.y-a.y));
 }
 
-void getraw(const std::vector<std::vector<Point3D>>&  pts, float angle, std::vector<geometry_msgs::Point>& leftm, std::vector<geometry_msgs::Point>& rightm, int arc=0) 
+int agets(const std::vector<Point3D>& arc) //get the actual number of (valid) points (arc_get_size)
+{
+    int s = 0;
+    for (; s < arc.size(); s++) if (arc[s].alpha < 0.0001) break;
+    return s;
+}
+
+inline int indexer(const std::vector<Point3D>& arc, float angle) //find index of point closest to that angle (binary search)
+{
+    int s = agets(arc);
+    float c = s/2;
+    int ind = c; //ever-decreasing (*1/2) increment
+    //angle -> index
+    float d = angle - arc[ind].alpha; //distance (to be minimized)
+    while (c > 0.5)
+    {
+        if (d<0) ind -= c;
+        else ind += c;
+        d = angle - arc[ind].alpha;
+        c /= 2;
+        //printf("\narc: %d, i: %3d, c: %7.3f, a: %7.3f, d: %7.3f, n: %5d", arc, index, c, pts[arc][index].alpha, d, s);
+    }
+    return ind;
+}
+
+int arcer(const std::vector<Point3D>& arc, int ind, bool dir) //input: arc, starting index, direction (bool -> R?); output: index of first detected curb point
+{
+    bool g;
+    int i, c, s = agets(arc);
+    if (dir) c = -1;
+    else c = 1;
+    if (arc[ind].alpha)
+    {
+        i=ind;
+        g = false;
+        //printf("\n%s ", dir ? "R " : "L ");
+        float pa = arc[i].alpha;
+        do
+        {
+            //ROS_INFO("L a: %d i: %d", arc, i);
+            if (i>=s)
+            {
+                if (g) break;
+                i=0; //handle breakpoint (360---0)
+                //printf(" G ");
+                g = true;
+            }
+            if (i<0)
+            {
+                if (g) break;
+                i=s-1; //handle breakpoint (0---360)
+                //printf(" g ");
+                g = true;
+            }
+            //printf("[%7.3f]", arc[i].alpha);
+            if (arc[i].alpha > 180 || ( (dir && (pa < arc[i].alpha)) || (!dir && (pa > arc[i].alpha)) ) ) break; //check for "overshoot"
+            pa = arc[i].alpha;
+            if (arc[i].isCurbPoint==2 && arc[i].alpha > 0.0001) return i;
+            i += c;
+        }
+        while(i!=ind);
+    }
+    return -1;
+}
+
+void getraw(const std::vector<std::vector<Point3D>>&  pts, float angle, std::vector<geometry_msgs::Point>& leftm, std::vector<geometry_msgs::Point>& rightm, int arc=0) //get an array of unfiltered points corresponding to detected curb-points on the 2 sides (L & R)
 {
     int s = 1;
     bool cango = true;
@@ -27,89 +92,35 @@ void getraw(const std::vector<std::vector<Point3D>>&  pts, float angle, std::vec
         float lefta, righta;
         bool lfound = false, rfound = false;
         geometry_msgs::Point p;
-        int index = s/2;
-        //angle -> index
-        
-        float d = angle - pts[arc][index].alpha;
-        float c = s/2;
-        while (c > 0.5)
-        {
-            if (d<0) index -= c;
-            else index += c;
-            d = angle - pts[arc][index].alpha;
-            c /= 2;
-            //printf("\narc: %d, i: %3d, c: %7.3f, a: %7.3f, d: %7.3f, n: %5d", arc, index, c, pts[arc][index].alpha, d, s);
-        }
+        int index = indexer(pts[arc], angle);
         if (pts[arc][index].alpha)
         {
-            int i;
-            //find curb point on the left side of the arc
-            i=index;
-            bool g = false;
-            float pa = pts[arc][i].alpha;
-            do
+            int i = arcer(pts[arc], index, false);
+            //printf("\nLi: %3d", i);
+            if (i != -1)
             {
-                //ROS_INFO("L a: %d i: %d", arc, i);
-                if (i>=s)
-                {
-                    if (g) break;
-                    i=0; //handle breakpoint (0---360)
-                    g = true;
-                }
-                if (pts[arc][i].alpha > 180 || pa > pts[arc][i].alpha) break; //check for "overshoot"
-                pa = pts[arc][i].alpha;
-                if (pts[arc][i].isCurbPoint==2)
-                {
-                    lefta = pts[arc][i].alpha;
-                    p.x = pts[arc][i].p.x;
-                    p.y = pts[arc][i].p.y;
-                    p.z = pts[arc][i].p.z;
-                    leftm.push_back(p);
-                    lfound = true;
-                    break;
-                }
-                i++;
+                //printf(" ...so %3d it is!", i);
+                lfound = true;
+                lefta = pts[arc][i].alpha;
+                p.x = pts[arc][i].p.x;
+                p.y = pts[arc][i].p.y;
+                p.z = pts[arc][i].p.z;
+                leftm.push_back(p);
             }
-            while (i!=index);
-            //find curb point on the right side of the arc
-            i=index;
-            g = false;
-            pa = pts[arc][i].alpha;
-            do
-            {
-                //ROS_INFO("R a: %d i: %d", arc, i);
-                if (i<0)
-                {
-                    if (g) break;
-                    i=s-1; //handle breakpoint (0---360)
-                    g = true;
-                }
-                if (pts[arc][i].alpha > 180 || pa < pts[arc][i].alpha) break; //check for "overshoot"
-                pa = pts[arc][i].alpha;
-                if (pts[arc][i].isCurbPoint==2)
-                {
-                    righta = pts[arc][i].alpha;
-                    p.x = pts[arc][i].p.x;
-                    p.y = pts[arc][i].p.y;
-                    p.z = pts[arc][i].p.z;
-                    rightm.push_back(p);
-                    rfound = true;
-                    break;
-                }
-                i--;
-            }
-            while (i!=index);
-            //get center
-            //if (lfound && rfound) angle = (lefta + righta) / 2;
-            //printf("\narc: %2d, a: %7.3f, L: %7.3f, R: %7.3f", arc, pts[arc][index].alpha, lfound ? lefta : -0.0, rfound ? righta : -0.0);
 
-            // printf("\narc: %2d, s: %2d, a: %7.3f", arc, s, pts[arc][index].alpha);
-            // int li = leftm.size()-1;
-            // int ri = rightm.size()-1;
-            // if (lfound) printf("\nL: %7.3f, x: %7.3f, y: %7.3f, z: %7.3f", lefta, leftm[li].x, leftm[li].y, leftm[li].z);
-            // else printf("\nL: -----");
-            // if (rfound) printf("\nR: %7.3f, x: %7.3f, y: %7.3f, z: %7.3f\n", righta, rightm[ri].x, rightm[ri].y, rightm[ri].z);
-            // else printf("\nR: -----\n");
+            i = arcer(pts[arc], index, true);
+            //printf("\nRi: %3d", i);
+            if (i != -1)
+            {
+                //printf(" ...so %3d it is!", i);
+                rfound = true;
+                righta = pts[arc][i].alpha;
+                p.x = pts[arc][i].p.x;
+                p.y = pts[arc][i].p.y;
+                p.z = pts[arc][i].p.z;
+                rightm.push_back(p);
+            }
+
             {
                 float anew = (lefta + righta)/2;
                 if (lfound && rfound && abs(anew - angle) < (lefta-righta)/2) angle = anew;
@@ -185,47 +196,6 @@ void trimmer(std::vector<geometry_msgs::Point>& pts)
         j++;
     }
 }
-
-
-// void trimmer(std::vector<geometry_msgs::Point>& pts)
-// {
-//     float dx, dy, avg = 0, dev = 0;
-//     int i, j, s=pts.size()-1;
-//     std::vector<float> d;
-//     for (int i=0; i<s; i++)
-//     {
-//         dx = pts[i+1].x-pts[i].x;
-//         dy = pts[i+1].y-pts[i].y;
-//         d.push_back(atan2(dy, dx));
-//         printf("\n%3d: %7.3f", i, d[i]);
-//     }
-//     s = d.size();
-//     for (i=0; i<s; i++) avg += d[i];
-//     avg /= s;
-//     for (i=0; i<s; i++) dev += abs(d[i] - avg);
-//     dev /= s;
-//     i=2;
-//     j=1;
-//     s++;
-//     printf("\n avg: %7.3f, dev: %7.3f", avg, dev);
-//     while (i<s)
-//     {
-//         printf("\n%3d: %7.3f (%3d/%3d)", j, d[j], i, s);
-//         if (abs(d[j] - avg) > dev * difmax)
-//         {
-//             //pts.erase(pts.begin()+i);
-//             pts[i-1].z=5;
-//             printf(" -");
-//             /*
-//             s--;
-//             j++;
-//             */
-//             printf("\n[%2d: %7.3f (%3d/%3d)]", j, d[j], i, s);
-//         }
-//         i++;
-//         j++;
-//     }
-// }
 
 std::vector<std::vector<geometry_msgs::Point>> chopper(std::vector<geometry_msgs::Point>& pts)
 {
