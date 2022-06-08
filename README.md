@@ -1,6 +1,6 @@
 # `urban_road_filter`: a real-time LIDAR-based urban road and sidewalk detection algorithm for autonomous vehicles
 
-<img src="img/urban_road_filter_anim01.gif" width=274/><img src="img/urban_road_filter_static01.png" width=274/>
+<img src="img/urban_road_filter_anim01.gif" height=620/> <img src="img/urban_road_filter_static01.png" height=620/>
 
 # Dependency
 
@@ -88,3 +88,17 @@ If you use any of this code please consider citing the [paper](https://www.mdpi.
 <img src="img/marker_poly01.png" width=440/>
 <img src="img/marker_road_high01.png" width=440/>
 <img src="img/marker_poly02.png" width=440/>
+
+# ROS publications / subscriptions
+
+```mermaid
+flowchart LR
+
+P[points] -->|sensor_msgs/PointCloud2| U(urban_road_filt)
+U --> |sensor_msgs/PointCloud2| A[curb]
+U --> |sensor_msgs/PointCloud2| B[road] 
+U --> |sensor_msgs/PointCloud2| C[road_probably]
+U --> |sensor_msgs/PointCloud2| D[roi]
+U --> |visualization_msgs/MarkerArray| E[road_marker]
+
+```
