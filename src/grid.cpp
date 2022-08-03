@@ -1,6 +1,7 @@
 #include "urban_road_filter/data_structures.hpp"
 #include <cmath>
 
+bool asd1 = false;
 
 void l_marker_init2(visualization_msgs::Marker& m) //DUPLICATE!!!!! MUST BE EXPORTED TO data_structures.hpp (along with the originals in lidar_segmentation.cpp) !!!!!
 {
@@ -8,6 +9,7 @@ void l_marker_init2(visualization_msgs::Marker& m) //DUPLICATE!!!!! MUST BE EXPO
     m.header.stamp = ros::Time();
     m.type = visualization_msgs::Marker::SPHERE_LIST;
     //m.type = visualization_msgs::Marker::LINE_STRIP;
+    //m.type = visualization_msgs::Marker::LINE_LIST;
     m.action = visualization_msgs::Marker::ADD;
     m.pose.position.x = 0;
     m.pose.position.y = 0;
@@ -21,6 +23,29 @@ void l_marker_init2(visualization_msgs::Marker& m) //DUPLICATE!!!!! MUST BE EXPO
     m.scale.z = 0.5;
     m.lifetime = ros::Duration(0);
 }
+
+void l_marker_init4(visualization_msgs::Marker& m) //DUPLICATE!!!!! MUST BE EXPORTED TO data_structures.hpp (along with the originals in lidar_segmentation.cpp) !!!!!
+{
+    m.header.frame_id = params::fixedFrame;
+    m.header.stamp = ros::Time();
+    //m.type = visualization_msgs::Marker::SPHERE_LIST;
+    //m.type = visualization_msgs::Marker::LINE_STRIP;
+    m.type = visualization_msgs::Marker::LINE_LIST;
+    m.action = visualization_msgs::Marker::ADD;
+    m.pose.position.x = 0;
+    m.pose.position.y = 0;
+    m.pose.position.z = 0;
+    m.pose.orientation.x = 0.0;
+    m.pose.orientation.y = 0.0;
+    m.pose.orientation.z = 0.0;
+    m.pose.orientation.w = 1.0;
+    m.scale.x = 0.2;
+    m.scale.y = 0.2;
+    m.scale.z = 0.2;
+    m.lifetime = ros::Duration(0);
+}
+
+
 inline std_msgs::ColorRGBA l_setcolor(float r, float g, float b, float a)
 {
     std_msgs::ColorRGBA c;
@@ -31,24 +56,32 @@ inline std_msgs::ColorRGBA l_setcolor(float r, float g, float b, float a)
     return c;
 }
 
+float sqdistp(geometry_msgs::Point a, geometry_msgs::Point b)
+{
+    int x = a.x - b.x, y = a.y - b.y;
+    return x*x+y*y;
+}
+
 struct cell
 {
-    std::vector<Point3D*> pp;   //pointers to points
+    std::vector<Point3D*> pp;   //pointers to (non-curb) points
+    std::vector<Point3D*> cp;   //pointers to curb points
     int type = 0;
     bool iscurb = false;        //contains curb point
     struct
     {
-        bool    l = false,  //left
-                r = false,  //right
-                t = false,  //top
-                b = false;  //bottom
+        bool    l = false,      //left
+                r = false,      //right
+                t = false,      //top
+                b = false;      //bottom
     }side;  //borders
 };
+
 struct cellgrid
 {
-    std::vector<std::vector<cell>> cells; //cells
+    std::vector<std::vector<cell>> cells;   //cells
     bool isvalid(int x, int y) { if (cells.size()) return ( x >= 0 && y >= 0 && x < cells.size() && y < cells[0].size() ); }    //index validity
-    cellgrid(int x, int y)  //constructor
+    cellgrid(int x, int y)                  //constructor
     {
         cells.resize(x, std::vector<cell> (y) );
     }
@@ -77,21 +110,34 @@ void flroad(int i, int j, cellgrid& grid, int dir) //depth-first recursive flood
     }
 }
 
-int sop(cell* c) //select outermost point (heuristic polygon vertex finder)
+int sop(cell* c) //select outermost curb-point (heuristic polygon vertex finder)
 {
-    int v, max = 0, id, x=0, y=0, s = c->pp.size();     //simple (inefficient but convenient and affordable) method
-    x = c->side.b * -1 + c->side.t;                     //x coefficient (-1, 0 or +1)
-    y = c->side.r * -1 + c->side.l;                     //y coefficient (-1, 0 or +1)
-    for (int i = 0; i < s; i++)
+    int s = c->cp.size();
+    if (c)
     {
-        v = c->pp[i]->p.x * x + c->pp[i]->p.y * y;  //characteristic value (x or y, - or +, OR diagonal hybrid)
-        if (v > max)                                //searchfor its maximum (=outermost point)
+        int id, x, y;                       //simple (inefficient but convenient and affordable) method
+        x = c->side.b * -1 + c->side.t;     //x coefficient (-1, 0 or +1)
+        y = c->side.r * -1 + c->side.l;     //y coefficient (-1, 0 or +1)
+        float v, max = c->cp[0]->p.x * x + c->cp[0]->p.y * y;
+        //if (asd1) printf("max0 = %3.2f, x = %d, y = %d", max, x, y); //SEGFAULT!?!?!?!?! HOW???
+        fflush(stdout);
+        for (int i = 0; i < s; i++)
         {
-            max = v;
-            id = i;
+            v = c->cp[i]->p.x * x + c->cp[i]->p.y * y;  //characteristic value (x or y, - or +, OR diagonal hybrid)
+            if (asd1) printf(" %3.2f", v);
+            fflush(stdout);
+            if (v > max)                                //search for its maximum (=outermost point)
+            {
+                max = v;
+                id = i;
+                if (asd1) printf("*");
+                fflush(stdout);
+            }
         }
+        if (asd1) printf("\n");
+        return id;
     }
-    return id;
+    return -1;
 }
 
 void cclr(cellgrid& g, std::vector<std::vector<cell*>>& areas) //connected component labeller
@@ -130,7 +176,7 @@ void cclr(cellgrid& g, std::vector<std::vector<cell*>>& areas) //connected compo
         {
             if (g.cells[x0][y0].type == 2)
             {
-                for (int i = 0; i < 8; i++)                                 //check neighbouring cells
+                for (int i = 0; i < 8; i++) //check neighbouring cells
                 {
                     x = x0 + xc[i];
                     y = y0 + yc[i];
@@ -167,6 +213,7 @@ void cclr(cellgrid& g, std::vector<std::vector<cell*>>& areas) //connected compo
         }
     }
 */
+/*
     {   //DEBUG: print grid labeling in console
         for (int x = 0; x < sx; x++)
         {
@@ -178,6 +225,25 @@ void cclr(cellgrid& g, std::vector<std::vector<cell*>>& areas) //connected compo
         for (int i = 0; i < areas.size(); i++) printf("%2d: %d\n", i+1, areas[i].size());
         printf("-------------------------\n");
     }
+*/
+}
+
+void line_lister(std::vector<geometry_msgs::Point>& poly)
+{
+    std::vector<geometry_msgs::Point> outpoly;
+    int s = poly.size();
+    for (int i = 0; i < s; i++)
+    {
+        for (int j = i+1; j < s; j++)
+        {
+            if (sqdistp(poly[i], poly[j]) < 8)  //max distance between 2 points in neighbouring cells ( sqr( 2*sqrt(2) ) = 8 [@ cell_size = 1])
+            {
+                outpoly.push_back(poly[i]);
+                outpoly.push_back(poly[j]);
+            }
+        }
+    }
+    poly = outpoly;
 }
 
 void Detector::gridder(std::vector<std::vector<Point3D>>& raw, std::vector<std::vector<int>>& statusgrid, visualization_msgs::MarkerArray& poly)
@@ -195,8 +261,8 @@ void Detector::gridder(std::vector<std::vector<Point3D>>& raw, std::vector<std::
     int s = raw.size(), ss = raw[0].size();
     int ix, iy;
     visualization_msgs::Marker cellpoly;
-    l_marker_init2(cellpoly);
-    cellpoly.color = l_setcolor(0.0, 0.0, 0.0, 0.5);
+    l_marker_init4(cellpoly);
+    cellpoly.color = l_setcolor(0.0, 0.0, 1.0, 0.5);
     cellpoly.id = 1020;
 
     for (int i=0; i < s; i++)
@@ -206,13 +272,15 @@ void Detector::gridder(std::vector<std::vector<Point3D>>& raw, std::vector<std::
             iy = floor( (raw[i][j].p.y - null_y) / cell_size);
             if (grid.isvalid(ix, iy))
             {
-                grid.cells[ix][iy].pp.push_back(&raw[i][j]);
+                
                 if (!grid.cells[ix][iy].type) grid.cells[ix][iy].type = 1;  //set as checked
                 if (raw[i][j].isCurbPoint == 2)                             //contains curb points
                 {
+                    grid.cells[ix][iy].cp.push_back(&raw[i][j]);            //add to curb points
                     //grid[ix][iy].iscurb = true;
                     grid.cells[ix][iy].type = 2;                            //set as curb
                 }
+                else grid.cells[ix][iy].pp.push_back(&raw[i][j]);
             }
         }
     flroad(int (-null_x) + 5, int (-null_y) -1, grid, 0);                   //starting point for road detection
@@ -220,48 +288,52 @@ void Detector::gridder(std::vector<std::vector<Point3D>>& raw, std::vector<std::
     s = statusgrid.size(); ss = statusgrid[0].size();
     cell* temptr;
     geometry_msgs::Point tempp;
-    int ps;
-    /*
-    // old/test version, parts to be salvaged?
+
     for (int i = 0; i < s; i++)
         for (int j = 0; j < ss; j++)
         {
             temptr = &grid.cells[i][j];
-            ps = temptr->pp.size();
             if (temptr->type == 2 && !temptr->side.b && !temptr->side.t && !temptr->side.l && !temptr->side.r)   //has no borders with the road
-            {
-                //cellpoly.points.clear();
-                //cellpoly.id++;
                 temptr->type = 4;
-                for (int k = 0; k < ps; k++)
-                {
-                    tempp.x = temptr->pp[k]->p.x;
-                    tempp.y = temptr->pp[k]->p.y;
-                    tempp.z = temptr->pp[k]->p.z;
-                    cellpoly.points.push_back(tempp);
-                }
-                //poly.markers.push_back(cellpoly);
-            }
         }
-        */
-    //poly.markers.push_back(cellpoly);
+
     std::vector<std::vector<cell*>> areas;
     cclr(grid, areas);
     s = areas.size();
     cellpoly.points.clear();
+    pcl::PointXYZI xyzi;
+    int tempid = -1;
     for (int i = 0; i < s; i++)
     {
         ss = areas[i].size();
         for (int j = 0; j < ss; j++)
         {
-            tempp.x = areas[i][j]->pp[sop(areas[i][j])]->p.x;
-            tempp.y = areas[i][j]->pp[sop(areas[i][j])]->p.y;
-            tempp.z = areas[i][j]->pp[sop(areas[i][j])]->p.z;
-            cellpoly.points.push_back(tempp);
+            //if (i == 10 && j == 7)
+            {
+                asd1 = true;
+                printf("\n[%d, %d]: ", i, j);
+                fflush(stdout);
+            }
+            tempid = sop(areas[i][j]);
+            if (tempid >= 0)
+            {
+                xyzi = areas[i][j]->cp[tempid]->p;
+                tempp.x = xyzi.x;
+                tempp.y = xyzi.y;
+                tempp.z = xyzi.z;
+                cellpoly.points.push_back(tempp);
+            }
+            asd1 = false;
         }
+        line_lister(cellpoly.points);
+        if (cellpoly.points.size()>1)
+        {
+            poly.markers.push_back(cellpoly);
+            cellpoly.id++;
+        }
+        cellpoly.points.clear();
     }
-    poly.markers.push_back(cellpoly);
-
+    
     s = statusgrid.size(); ss = statusgrid[0].size();
     for (int i = 0; i < s; i++)
         for (int j = 0; j < ss; j++)

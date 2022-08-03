@@ -21,6 +21,7 @@ float       params::polysimp = 0.5;         //coefficient of polygon simplificat
 float       params::polyz = -1.5;           //manually set z-coordinate (output polygon)
 
 int         ghostcount = 0;                 //counter variable helping to remove obsolete markers (ghosts)
+int         polyghostp = 0;                 //polygon ghost "pointer" (id holder)
 
 float grid_size_x = 30;//abs(params::max_X - params::min_X);
 float grid_size_y = 20;//abs(params::max_Y - params::min_Y);
@@ -712,6 +713,20 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
 
         /*publishing the marker array*/
         pub_marker.publish(ma);
+
+        //same for grid marker array
+        if (gridpoly.markers.size())
+        {
+            int delp = gridpoly.markers[gridpoly.markers.size()-1].id+1;    //deletion "pointer"
+            visualization_msgs::Marker delm;                                //deletion marker
+            delm.action = visualization_msgs::Marker::DELETE;
+            for (delm.id = delp; delm.id < polyghostp; delm.id++)
+            {
+                gridpoly.markers.push_back(delm);
+            }
+            polyghostp = delp;
+            //pub_gridpoly.publish(gridpoly);                               //done later on
+        }
     }
 
 
