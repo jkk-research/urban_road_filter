@@ -22,6 +22,14 @@ float       params::polyz = -1.5;           //manually set z-coordinate (output 
 
 int         ghostcount = 0;                 //counter variable helping to remove obsolete markers (ghosts)
 
+float grid_size_x = 30;//abs(params::max_X - params::min_X);
+float grid_size_y = 20;//abs(params::max_Y - params::min_Y);
+float cell_size = 1;
+int cellnumx = ceil(grid_size_x / cell_size);
+int cellnumy = ceil(grid_size_y / cell_size);
+
+std::vector<std::vector<int>> statusgrid(cellnumx, std::vector<int>(cellnumy,0));
+
 void marker_init(visualization_msgs::Marker& m)
 {
     m.pose.position.x = 0;
@@ -37,6 +45,46 @@ void marker_init(visualization_msgs::Marker& m)
     m.scale.y = 0.5;
     m.scale.z = 0.5;
 }
+
+void marker_init2(visualization_msgs::Marker& m)
+{
+    m.header.frame_id = params::fixedFrame;
+    m.header.stamp = ros::Time();
+    //m.type = visualization_msgs::Marker::SPHERE_LIST;
+    m.type = visualization_msgs::Marker::LINE_STRIP;
+    m.action = visualization_msgs::Marker::ADD;
+    m.pose.position.x = 0;
+    m.pose.position.y = 0;
+    m.pose.position.z = 0;
+    m.pose.orientation.x = 0.0;
+    m.pose.orientation.y = 0.0;
+    m.pose.orientation.z = 0.0;
+    m.pose.orientation.w = 1.0;
+    m.scale.x = 1.0;
+    m.scale.y = 1.0;
+    m.scale.z = 0.1;
+    m.lifetime = ros::Duration(0);
+}
+
+void marker_init3(visualization_msgs::Marker& m)
+{
+    m.header.frame_id = params::fixedFrame;
+    m.header.stamp = ros::Time();
+    m.type = visualization_msgs::Marker::CUBE_LIST;
+    m.action = visualization_msgs::Marker::ADD;
+    m.pose.position.x = 0;
+    m.pose.position.y = 0;
+    m.pose.position.z = 0;
+    m.pose.orientation.x = 0.0;
+    m.pose.orientation.y = 0.0;
+    m.pose.orientation.z = 0.0;
+    m.pose.orientation.w = 1.0;
+    m.scale.x = 1.0;
+    m.scale.y = 1.0;
+    m.scale.z = 0.1;
+    m.lifetime = ros::Duration(0);
+}
+
 
 inline std_msgs::ColorRGBA setcolor(float r, float g, float b, float a)
 {
@@ -57,6 +105,11 @@ Detector::Detector(ros::NodeHandle* nh){
     pub_box = nh->advertise<pcl::PCLPointCloud2>("roi", 1); // ROI - region of interest
     pub_pobroad = nh->advertise<pcl::PCLPointCloud2>("road_probably", 1);
     pub_marker = nh->advertise<visualization_msgs::MarkerArray>("road_marker", 1);
+    pub_gridred = nh->advertise<visualization_msgs::Marker>("grid_red", 1);
+    pub_gridyellow = nh->advertise<visualization_msgs::Marker>("grid_yellow", 1);
+    pub_gridgreen = nh->advertise<visualization_msgs::Marker>("grid_green", 1);
+    pub_gridblack = nh->advertise<visualization_msgs::Marker>("grid_black", 1);
+    pub_gridpoly = nh->advertise<visualization_msgs::MarkerArray>("lane_polygons", 1);
 
     Detector::beam_init();
 
@@ -366,6 +419,66 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
         }
     }
 
+    visualization_msgs::Marker grid_red, grid_green, grid_yellow, grid_black;
+
+    marker_init3(grid_red);
+    grid_red.color = setcolor(0.5, 0.0, 0.0, 0.5);
+    grid_red.id = 1011;
+
+    marker_init3(grid_yellow);
+    grid_yellow.color = setcolor(0.5, 0.5, 0.0, 0.5);
+    grid_yellow.id = 1012;
+    
+    marker_init3(grid_green);
+    grid_green.color = setcolor(0.0, 0.5, 0.0, 0.5);
+    grid_green.id = 1013;
+    
+    marker_init3(grid_black);
+    grid_black.color = setcolor(0.0, 0.0, 0.0, 0.5);
+    grid_black.id = 1014;
+
+    visualization_msgs::MarkerArray gridpoly;
+
+    for (int i = 0; i < cellnumx; i++)
+        for (int j = 0; j < cellnumy; j++)
+        {
+            statusgrid[i][j] = 0;
+        }
+
+    Detector::gridder(array3D, statusgrid, gridpoly);
+
+    geometry_msgs::Point cpt;
+    cpt.z = 0;
+
+    for (int i = 0; i < cellnumx; i++)
+        for (int j = 0; j < cellnumy; j++)
+        {
+            cpt.x = params::min_X + cell_size * (i + 0.5);
+            cpt.y = params::min_Y + cell_size * (j + 0.5);
+            switch(statusgrid[i][j])
+            {
+                case 0:
+                //grid_yellow.points.push_back(cpt);
+                break;
+
+                case 1:
+                grid_yellow.points.push_back(cpt);
+                break;
+
+                case 2:
+                grid_red.points.push_back(cpt);
+                break;
+
+                case 3:
+                grid_green.points.push_back(cpt);
+                break;
+
+                case 4:
+                grid_black.points.push_back(cpt);
+                break;
+            }
+        }
+
     /*-- step 5.: setting up the marker --*/
     /*There need to be at least 3 points to connect, otherwise errors might occur.*/
     if (cM > 2)
@@ -619,4 +732,10 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
     pub_high.publish(cloud_filtered_High);  //filtered points (non-driveable road)
     pub_box.publish(cloud_filtered_Box);    //filtered points (non-road)
     pub_pobroad.publish(cloud_filtered_ProbablyRoad);
+    pub_gridred.publish(grid_red);
+    pub_gridyellow.publish(grid_yellow);
+    pub_gridgreen.publish(grid_green);
+    pub_gridblack.publish(grid_black);
+    pub_gridpoly.publish(gridpoly);
+
 }

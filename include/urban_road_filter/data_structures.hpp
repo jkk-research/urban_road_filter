@@ -85,6 +85,7 @@ namespace params{
   extern float polysimp;                                 /*polygon-egyszerűsítési tényező (Ramer-Douglas-Peucker)*/
   extern float polyz;                                   /*manuálisan megadott z-koordináta (polygon)*/
 };
+
 /*For pointcloud filtering*/
 template <typename PointT>
 class FilteringCondition : public pcl::ConditionBase<PointT>
@@ -125,6 +126,8 @@ class Detector{
     void zZeroMethod(std::vector<std::vector<Point3D>>& array3D,int index,int* indexArray);
 
     void blindSpots(std::vector<std::vector<Point3D>>& array3D,int index,int* indexArray,float* maxDistance);
+
+    void gridder(std::vector<std::vector<Point3D>>& raw, std::vector<std::vector<int>>& statusgrid, visualization_msgs::MarkerArray& poly);
     
     private:
     ros::Publisher pub_road;        
@@ -132,6 +135,11 @@ class Detector{
     ros::Publisher pub_box;         
     ros::Publisher pub_pobroad;    
     ros::Publisher pub_marker;      
+    ros::Publisher pub_gridred;
+    ros::Publisher pub_gridyellow;
+    ros::Publisher pub_gridgreen;
+    ros::Publisher pub_gridblack;
+    ros::Publisher pub_gridpoly;
 
     ros::Subscriber sub;
 
