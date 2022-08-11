@@ -83,7 +83,7 @@ inline std_msgs::ColorRGBA l_setcolor(float r, float g, float b, float a)
 
 float sqdistp(pcl::PointXYZI* a, pcl::PointXYZI* b)
 {
-    int x = a->x - b->x, y = a->y - b->y;
+    float x = a->x - b->x, y = a->y - b->y;
     return x*x+y*y;
 }
 
@@ -93,6 +93,7 @@ struct cell
 {
     std::vector<Point3D*> pp;   //pointers to (non-curb) points
     std::vector<Point3D*> cp;   //pointers to curb points
+    int x,y;
     int type = 0;
     bool iscurb = false;        //contains curb point
     int s = 0;                  //sides (v2.0) - config. of borders with the road ( = 4 bools in a trenchcoat [bottom, top, R and L borders resp., LSB->RSB order], see: 'bshape' above)
@@ -106,10 +107,11 @@ struct cellgrid
     cellgrid(int x, int y) { cells.resize(x, std::vector<cell> (y) ); }             //constructor
 };
 
-struct cellpoint
+struct cvertex
 {
     cell* c;
     pcl::PointXYZI* p;
+    int m;  //connectivity matrix (8-way, as an array of bools) --to do?
 };
 
 float cellndir(cell* c) //inverted direction of cell
@@ -265,90 +267,92 @@ void cclr(cellgrid& g, std::vector<std::vector<cell*>>& areas)  //connected comp
 
 }
 
-std::vector<geometry_msgs::Point> wrapper(std::vector<cellpoint>& poly)
+std::vector<geometry_msgs::Point> wrapper(std::vector<cvertex>& poly)
 {
+    std::vector<int> n;         //neighbours (index pointer)
+    int sn = 0, mn1, mn2;       //n.size() and indices of outermost vertex points by angular coordinates (v 2.0)
+    float a, amin, amax, cavg;  //angle (+min +max) between [representative points of] neighbouring cells + average angle of neighbouring cell-centers (heuristic variable)
     std::vector<geometry_msgs::Point> pv;
     geometry_msgs::Point cp;
     int s = poly.size();
     if (s)
     {
-        int d, dmin, dmax, dir;
         for (int i = 0; i < s; i++)
         {
-            pcl::PointXYZI* pmin = NULL;
-            pcl::PointXYZI* pmax = NULL;
-            //dir = atan2(-ylu[poly[i].c->s], -xlu[poly[i].c->s]); //(to do: swap)
-            dir = cellndir(poly[i].c);
-            dmin = 2;
-            dmax = -2;
+            n.clear();
+            cavg = 0;
             for (int j = 0; j < s; j++)
             {
-                if (sqdistp(poly[i].p, poly[j].p) < 8)
+                if ((abs(poly[j].c->x - poly[i].c->x) < 2) && (abs(poly[j].c->y - poly[i].c->y) < 2))   //neighbours
                 {
-                    cp.x = poly[i].p->x;
-                    cp.y = poly[i].p->y;
-                    cp.z = poly[i].p->z;
-                    pv.push_back(cp);
-                    cp.x = poly[j].p->x;
-                    cp.y = poly[j].p->y;
-                    cp.z = poly[j].p->z;
-                    pv.push_back(cp);
-                    /*
-                    d = atan2(poly[j].p->y - poly[i].p->y, poly[j].p->x - poly[i].p->x) - dir;
-                    printf()
-                    if (d < dmin)
-                    {
-                        dmin = d;
-                        pmin = poly[j].p;
-                    }
-                    if (d < dmax)
-                    {
-                        dmax = d;
-                        pmax = poly[j].p;
-                    }
-                    */
+                    if (i!=j) n.push_back(j);
+                    cavg += atan2(poly[j].c->y - poly[i].c->y, poly[j].c->x - poly[i].c->x);
                 }
-            }/*
-            if (pmin)
+            }
+            sn = n.size();
+            cavg /= sn;
+            //v 2.0 -> under development - works but does not outperform
+            /*
+            if (sn>1)
             {
+                a = 0;
+                amin = cavg;
+                amax = cavg;
+                mn1 = n[0];
+                mn2 = mn1;
+                for (int j = 0; j < sn; j++)
+                {
+                    a = atan2(poly[n[j]].p->y - poly[i].p->y, poly[n[j]].p->x - poly[i].p->x);
+                    if (a < amin)
+                    {
+                        amin = a;
+                        mn1 = n[j];
+                    }
+                    if (a > amax)
+                    {
+                        amax = a;
+                        mn2 = n[j];
+                    }
+                }
+                cp.x = poly[mn1].p->x;
+                cp.y = poly[mn1].p->y;
+                cp.z = poly[mn1].p->z;
+                pv.push_back(cp);
                 cp.x = poly[i].p->x;
                 cp.y = poly[i].p->y;
                 cp.z = poly[i].p->z;
                 pv.push_back(cp);
-                cp.x = pmin->x;
-                cp.y = pmin->y;
-                cp.z = pmin->z;
+                pv.push_back(cp);
+                cp.x = poly[mn2].p->x;
+                cp.y = poly[mn2].p->y;
+                cp.z = poly[mn2].p->z;
                 pv.push_back(cp);
             }
-            if (pmax)
+            else if (sn)    //singular line
             {
-                cp.x = poly[i].p->x;
-                cp.y = poly[i].p->y;
-                cp.z = poly[i].p->z;
-                pv.push_back(cp);
-                cp.x = pmax->x;
-                cp.y = pmax->y;
-                cp.z = pmax->z;
-                pv.push_back(cp);
-            }*/
-            
-            if (pmin && pmax)
-            {
-                cp.x = pmin->x;
-                cp.y = pmin->y;
-                cp.z = pmin->z;
+                cp.x = poly[n[0]].p->x;
+                cp.y = poly[n[0]].p->y;
+                cp.z = poly[n[0]].p->z;
                 pv.push_back(cp);
                 cp.x = poly[i].p->x;
                 cp.y = poly[i].p->y;
                 cp.z = poly[i].p->z;
-                pv.push_back(cp);
-                pv.push_back(cp);
-                cp.x = pmax->x;
-                cp.y = pmax->y;
-                cp.z = pmax->z;
                 pv.push_back(cp);
             }
-            
+            */
+            ///*//comment out this loop if using v 2.0
+            for (int j = 0; j < sn; j++)
+            {
+                cp.x = poly[n[j]].p->x;
+                cp.y = poly[n[j]].p->y;
+                cp.z = poly[n[j]].p->z;
+                pv.push_back(cp);
+                cp.x = poly[i].p->x;
+                cp.y = poly[i].p->y;
+                cp.z = poly[i].p->z;
+                pv.push_back(cp);
+            }
+            //*/
         }
     }
     return pv;
@@ -400,6 +404,8 @@ void Detector::gridder(std::vector<std::vector<Point3D>>& raw, std::vector<std::
         ss = grid.cells[i].size();
         for (int j = 0; j < ss; j++)
         {
+            grid.cells[i][j].x = i; //late initialization of local cell variable
+            grid.cells[i][j].y = j; //late initialization of local cell variable
             if (grid.cells[i][j].type == 3) //for every road-cell: check every (4-way) neighbouring cells
             {
                 waller(i+1,j, grid, 0);
@@ -438,9 +444,8 @@ void Detector::gridder(std::vector<std::vector<Point3D>>& raw, std::vector<std::
     s = areas.size();
     cellpoly.points.clear();
     pcl::PointXYZI xyzi;
-    std::vector<std::vector<cellpoint>> meshes;
-    std::vector<cellpoint> mesh;
-    cellpoint meshp;
+    std::vector<cvertex> mesh;
+    cvertex meshp;
     if (asd1) printf("\ncurb-cell data (debug) [area, cell]:\n");
     for (int i = 0; i < s; i++)
     {
@@ -451,7 +456,7 @@ void Detector::gridder(std::vector<std::vector<Point3D>>& raw, std::vector<std::
             {
                 if (asd1) printf("\n[%2d, %2d]: ", i, j);
             }
-            meshp = cellpoint{areas[i][j], sop(areas[i][j])};
+            meshp = cvertex{areas[i][j], sop(areas[i][j])};
             if (asd1) printf(" _ ");
             if (meshp.p) mesh.push_back(meshp);
             //asd1 = false;
