@@ -58,7 +58,7 @@ struct polar    //polar-coordinate struct for the points
 struct box      //struct for detection beams
 {
     std::vector<polar> p; //points within the beam's area
-    box *l, *r;           //pointer to adjacent beams (currently not used)
+    //box *l, *r;           //pointer to adjacent beams (currently not used)
     bool yx;              //whether it is aligned more with the y-axis (than the x-axis)
     float o, d;           //internal parameters (trigonometry)
 };

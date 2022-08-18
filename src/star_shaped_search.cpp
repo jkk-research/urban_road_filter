@@ -50,13 +50,15 @@ void Detector::beam_init()    //beam initialization
         }
     }
 
-    for (int i = 0, j = 1; j < rep; i++, j++)   //initializing the pointers to adjacent beams
+/*
+    for (int i = 0, j = 1; j < rep; i++, j++)   //initializing the pointers to adjacent beams (currently unused/not needed)
     {
         beams[i].l = &beams[j];
         beams[j].r = &beams[i];
     }
-    beams[0].r = &beams[rep];
-    beams[rep].l = &beams[0];
+    beams[0].r = &beams[rep-1];
+    beams[rep-1].l = &beams[0];
+*/
 
     Kfi = rep / (2 * M_PI); //should be 2pi/rep, but then we would have to divide by it every time - using division only once and then multiplying later on should be somewhat faster (?)
 }
