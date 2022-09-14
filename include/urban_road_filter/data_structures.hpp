@@ -77,9 +77,10 @@ namespace params{
   extern float angleFilter2;                                   /*Z = 0 érték mellett, két vektor által bezárt szög.*/
   extern float angleFilter3;                                   /*Csaplár László kódjához szükséges. Sugár irányú határérték (fokban).*/
   extern float min_X, max_X, min_Y, max_Y, min_Z, max_Z;       /*A vizsgált terület méretei.*/
-  extern int dmin_param;                 //(see below)
-  extern float kdev_param;               //(see below)
-  extern float kdist_param;              //(see below)
+  extern float kdev_param;                //(see below)
+  extern float kdist_param;               //(see below)
+  extern bool starbeam_filter;            //Toggle usage of rectangular beams for starshaped algorithm instead of the whole sector (containing the beam)
+  extern int dmin_param;                  //(see below)
   extern bool polysimp_allow;                           /*polygon-eygszerűsítés engedélyezése*/
   extern bool zavg_allow;                               /*egyszerűsített polygon z-koordinátái átlagból (engedély)*/
   extern float polysimp;                                 /*polygon-egyszerűsítési tényező (Ramer-Douglas-Peucker)*/
