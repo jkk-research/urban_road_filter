@@ -1,6 +1,13 @@
 #include "urban_road_filter/data_structures.hpp"
 #include <cmath>
 
+geometry_msgs::Point ncp;
+
+std::vector<geometry_msgs::Point> debpts;
+std::vector<int> xees = {1, 1, 0, -1, -1, -1, 0, 1};
+std::vector<int> yees = {0, 1, 1, 1, 0, -1, -1, -1};
+geometry_msgs::Point tempoint;
+
 bool asd1 = true;   //toggle debug output to console
 const std::vector<char> bshape = 
 {
@@ -26,7 +33,23 @@ const std::vector<int> ylu =
     0,  0,  0,  0
 };
 
-//float Ta(int y, int x)  //table of angles ( = atan2 lookup table for the 9 discrete values [8 dir. + {0,0}] -- to do [?] )
+//relative coordinate coefficient tables for checking neighbours in ccw order
+const std::vector<int> nlux = 
+{
+     1,  1, 0, -1,
+    -1, -1, 0,  1,
+     1,  1, 0, -1,
+    -1, -1, 0,  1
+};
+
+const std::vector<int> nluy = 
+{
+    0,  1,  1,  1,
+    0, -1, -1, -1,
+    0,  1,  1,  1,
+    0, -1, -1, -1
+};
+
 
 void l_marker_init2(visualization_msgs::Marker& m) //DUPLICATE!!!!! MUST BE EXPORTED TO data_structures.hpp (along with the originals in lidar_segmentation.cpp) !!!!!
 {
@@ -70,7 +93,6 @@ void l_marker_init4(visualization_msgs::Marker& m) //DUPLICATE!!!!! MUST BE EXPO
     m.lifetime = ros::Duration(0);
 }
 
-
 inline std_msgs::ColorRGBA l_setcolor(float r, float g, float b, float a)
 {
     std_msgs::ColorRGBA c;
@@ -93,10 +115,11 @@ struct cell
 {
     std::vector<Point3D*> pp;   //pointers to (non-curb) points
     std::vector<Point3D*> cp;   //pointers to curb points
-    int x,y;
-    int type = 0;
+    int x,y;                    //self coordinates
+    int type = 0;               //(road, curb, etc.)
     bool iscurb = false;        //contains curb point
     int s = 0;                  //sides (v2.0) - config. of borders with the road ( = 4 bools in a trenchcoat [bottom, top, R and L borders resp., LSB->RSB order], see: 'bshape' above)
+    pcl::PointXYZI* op = NULL;  //outermost point
 };
 
 struct cellgrid
@@ -111,21 +134,14 @@ struct cvertex
 {
     cell* c;
     pcl::PointXYZI* p;
-    int m;  //connectivity matrix (8-way, as an array of bools) --to do?
 };
 
-float cellndir(cell* c) //inverted direction of cell
+void flroad(int i, int j, cellgrid& grid)   //depth-first recursive floodfill algorithm to find the driveable road
 {
-    int x = -xlu[c->s], y = -ylu[c->s];
-    return atan2(y,x);
-}
-
-void flroad(int i, int j, cellgrid& grid) //depth-first recursive floodfill algorithm to find the driveable road
-{
-    if (!grid.isvalid(i,j)) return; //return if out of range
-    if (grid.cells[i][j].type == 1) //contains points (non-curb only)
+    if (!grid.isvalid(i,j)) return;         //return if out of range
+    if (grid.cells[i][j].type == 1)         //contains points (non-curb only)
     {
-        grid.cells[i][j].type = 3;  //set as driveable
+        grid.cells[i][j].type = 3;          //set as driveable
         flroad(i+1,j, grid);
         flroad(i-1,j, grid);
         flroad(i,j+1, grid);
@@ -142,223 +158,143 @@ void waller(int i, int j, cellgrid& grid, int dir)  //mark borders with road
     }
 }
 
-pcl::PointXYZI* sop(cell* c) //select outermost (curb-)point (heuristic polygon vertex finder)
+pcl::PointXYZI* sop(cell& c) //select outermost (curb-)point (heuristic polygon vertex finder)
 {
-    int s = c->cp.size();
+    int s = c.cp.size();
     if (s)
     {
-        int id = 0, x = xlu[c->s], y = ylu[c->s];               //id + set coefficients (what direction, given by "border shape")
-        if (asd1) printf("shape: %c  --> ", bshape[c->s]);         //(debug)
-        if (!c->s) return NULL;                                 //if has no borders (error-proofing)
-        float v, max = c->cp[0]->p.x * x + c->cp[0]->p.y * y;   //initial value (see 'v' below)
-        if (asd1) printf("x = %d, y = %d, max0 = %3.2f;", x, y, max);
+        int id = 0, x = xlu[c.s], y = ylu[c.s];                 //id + set coefficients (what direction, given by "border shape")
+        //if (asd1) printf("shape: %c ", bshape[c.s]);            //(debug)
+        if (!c.s) return NULL;                                  //if has no borders (error-proofing)
+        float v, max = c.cp[0]->p.x * x + c.cp[0]->p.y * y;     //initial value (see 'v' below)
+        //if (asd1) printf("x = %d, y = %d, max0 = %3.2f;", x, y, max);
         for (int i = 0; i < s; i++)
         {
-            v = c->cp[i]->p.x * x + c->cp[i]->p.y * y;          //characteristic value (x or y, - or +, OR diagonal hybrid)
-            if (asd1) printf(" %3.2f", v);
+            v = c.cp[i]->p.x * x + c.cp[i]->p.y * y;            //characteristic value (x or y, - or +, OR diagonal hybrid)
+            //if (asd1) printf(" %3.2f", v);
             if (v > max)                                        //search for its maximum (=outermost point)
             {
                 max = v;
                 id = i;
-                if (asd1) printf("*");
+                //if (asd1) printf("*");
             }
         }
-        if (asd1) printf("\n");
-        return &(c->cp[id]->p);
+        //if (asd1) printf("\n\t%p ->\n", &(c.cp[id]->p));
+        return &(c.cp[id]->p);
     }
     return NULL;                                                //just in case
 }
 
-void cclr(cellgrid& g, std::vector<std::vector<cell*>>& areas)  //connected component labeller
+std::vector<geometry_msgs::Point> wrap(cellgrid& g, std::vector<std::vector<cell*>>& areas)
 {
-    std::vector<int> eq = {0};  //will store the smallest number corresponding to the same label, indexes = labels in use
-    int sx = g.cells.size();    //x size
-    if (!sx) return;            //zero-size-error safety measure
-    int sy = g.cells[0].size(), x, y, v = 0;
-    std::vector<std::vector<int>> f(sx, std::vector<int>(sy, 0) );  //connected-compontent-labelled grid
-    std::vector<int> xc = {0, -1, -1, -1};                          //neighbour-checking kernel (relative x-coordinate)
-    std::vector<int> yc = {-1, -1, 0, 1};                           //neighbour-checking kernel (relative y-coordinate)
-    //searching for target cells to label (temporary values)
-    for (int x0 = 0; x0 < sx; x0++)
-        for (int y0 = 0; y0 < sy; y0++)
-        {
-            if (g.cells[x0][y0].type == 2)
-            {
-                if (!f[x0][y0])
-                {
-                    v++;                    //new label
-                    f[x0][y0] = v;          //assign it to the cell
-                    eq.push_back(v);        //register in equivalency list (eq[v] = v)
-                }
-                for (int i = 0; i < 4; i++) //check (8-way) neighbouring cells
-                {
-                    x = x0 + xc[i]; //base cell + relative x-coordinate of neighbour
-                    y = y0 + yc[i]; //base cell + relative y-coordinate of neighbour
-                    if (!g.isvalid(x,y)) continue;  //skip out-of-area cells
-                    if (g.cells[x][y].type == 2)
-                    {
-                        if (!f[x][y]) f[x][y] = f[x0][y0]; //if not already labelled: label it with the same
-                    }
-                }
-            }
-        }
-    //searching for (8-way) neighbouring cells that refer to the same area with different labels
-    for (int x0 = 0; x0 < sx; x0++)
-        for (int y0 = 0; y0 < sy; y0++)
-        {
-            if (g.cells[x0][y0].type == 2)
-            {
-                for (int i = 0; i < 4; i++)
-                {
-                    x = x0 + xc[i];
-                    y = y0 + yc[i];
-                    if (!g.isvalid(x,y)) continue;
-                    if (g.cells[x][y].type == 2 && f[x][y] != f[x0][y0])    //...if it has a different label...
-                    {
-                        int v1 = std::min(f[x0][y0], f[x][y]),              //(the smaller of the two)
-                            v2 = std::max(f[x0][y0], f[x][y]);              //(the greater of the two)
-                        for (int f = 1; f <= v; f++)                        //any labels...
-                            if (eq[f] == v2)                                //...that refer to the same area...
-                                eq[f] = v1;                                 //...be labelled with the smallest number
-                        f[x0][y0] = v1;                                     //rewrite the base cell
-                        f[x][y] = v1;                                       //rewrite the neighbour
-                    }
-                }
-            }
-        }
-
-    //"defragment"/compactify labels (omit empty ones)
-    int s = eq.size();
-    int nv = 0; //id (and count) of the new label
-    for (int i = 1; i<s; i++)       //iterate through the equivalency list
-    {
-        if (eq[i] == i)
-        {
-            eq[i] = nv; //assign new label
-            nv++;
-        }
-        //from former { eq[a]==a ; eq[b]==a } (a < b, labeling the same area), now { eq[a]==c ; eq[b]==a }
-        else eq[i] = eq[eq[i]]; //assign new label ( = c, so: from { eq[a]==c ; eq[b]==a } to { eq[a]==c ; eq[b]==c }
-    }
-    //
-    areas.resize(nv);
-    for (int x = 0; x < sx; x++)
-    {
-        for (int y = 0; y < sy; y++)
-        {
-            f[x][y] = eq[f[x][y]];                                                      //assign corresponding new label
-            if (g.cells[x][y].type == 2) areas[f[x][y]].push_back(&(g.cells[x][y]));    //add cell to area
-        }
-    }
-
-    if (asd1)
-    {   //DEBUG: print grid labeling in console
-        printf("\nmap of labelled cells:");
-        for (int x = sx-1; x >= 0; x--)
-        {
-            printf("\n");
-            for (int y = sy-1; y >= 0; y--)
-                printf("%2d ", f[x][y] + (int)(g.cells[x][y].type==2));
-        }            
-        printf("\n\nnumber of cells per label:\n");
-        for (int i = 0; i < areas.size(); i++) printf("%2d: %d\n", i+1, areas[i].size());
-        printf("-------------------------\n");
-    }
-
-}
-
-std::vector<geometry_msgs::Point> wrapper(std::vector<cvertex>& poly)
-{
-    std::vector<int> n;         //neighbours (index pointer)
-    int sn = 0, mn1, mn2;       //n.size() and indices of outermost vertex points by angular coordinates (v 2.0)
-    float a, amin, amax, cavg;  //angle (+min +max) between [representative points of] neighbouring cells + average angle of neighbouring cell-centers (heuristic variable)
-    std::vector<geometry_msgs::Point> pv;
+    int sx = g.cells.size();
+    if (!sx) return {};
+    int sy = g.cells[0].size();
     geometry_msgs::Point cp;
-    int s = poly.size();
-    if (s)
+    pcl::PointXYZI* op;
+    std::vector<geometry_msgs::Point> pv;
+    int x, y, x0, y0, nid;              //next & previous coordinates + direction (id of 8-way neighbour in ccw dir)
+    int  area = -1;                     //id of area (bordered with curb)
+    bool trg = false;                   //trigger (-> "armed")
+    for(int i=0; i<sx; i++)
     {
-        for (int i = 0; i < s; i++)
+        for (int j=0; j<sy; j++)        //iterate through the cells
         {
-            n.clear();
-            cavg = 0;
-            for (int j = 0; j < s; j++)
+            if (g.cells[i][j].type==2 && !g.cells[i][j].op)     //if curb-cell that had not been addressed yet
             {
-                if ((abs(poly[j].c->x - poly[i].c->x) < 2) && (abs(poly[j].c->y - poly[i].c->y) < 2))   //neighbours
+                x0 = i;                                         //set origin (x)
+                y0 = j;                                         //set origin (y)
+                g.cells[x0][y0].op = sop(g.cells[x0][y0]);      //calculate outermost point
+                //if (asd1) printf("\n{%d}\n", nid);
+                if (asd1 && !g.cells[x0][y0].op) printf("\n\n ALAAARM!!!!! \n\n");
+                nid = 6;                                        //opposite to iteration direction (=-y)
+                if (asd1) printf("\n\n[%d][%d]{%d} ", x0, y0, nid);
+                area++;                                         //set area id
+                areas.resize(area+1);                           //adjust size
+                do
                 {
-                    if (i!=j) n.push_back(j);
-                    cavg += atan2(poly[j].c->y - poly[i].c->y, poly[j].c->x - poly[i].c->x);
-                }
-            }
-            sn = n.size();
-            cavg /= sn;
-            //v 2.0 -> under development - works but does not outperform
-            /*
-            if (sn>1)
-            {
-                a = 0;
-                amin = cavg;
-                amax = cavg;
-                mn1 = n[0];
-                mn2 = mn1;
-                for (int j = 0; j < sn; j++)
-                {
-                    a = atan2(poly[n[j]].p->y - poly[i].p->y, poly[n[j]].p->x - poly[i].p->x);
-                    if (a < amin)
+                    //if (asd1) printf("-> %d|\n", nid);
+                    x = x0 + nlux[nid];                         //select neighbour (x)
+                    y = y0 + nluy[nid];                         //select neighbour (y)
+                    if (asd1) printf(" (%d,%d) ", x, y);
+                    //if (asd1) printf("\n[%d][%d](%d)(%d) {%d} ", x0, y0, x, y, nid);
+                    if (!g.isvalid(x,y))                        //if out of range
                     {
-                        amin = a;
-                        mn1 = n[j];
+                        trg = true;                             //set trigger
+                        if (asd1) printf("|%d|", nid);
                     }
-                    if (a > amax)
+                    else if (g.cells[x][y].type != 2)
                     {
-                        amax = a;
-                        mn2 = n[j];
+                        trg = true; //if not curb, set trigger
+                        //if (asd1) printf(" *trg*\n ");
+                        if (asd1) printf("[%d]", nid);
+                    }
+                    else if (trg && g.cells[x][y].type==2)      //first curb-neighbour in ccw direction
+                    {
+                        //if (g.cells[x][y].op) break;
+                        op = sop(g.cells[x][y]);                //calculate outermost point
+                        //if (asd1) printf("|->\t%p ->\n", &op);
+                        g.cells[x][y].op = op;
+                        //if (asd1) printf("|->\t%p \n", &op);
+                        areas[area].push_back(&g.cells[x][y]);  //add cell to registry (needed?)
+                        
+                        cp.x = g.cells[x0][y0].op->x;
+                        cp.y = g.cells[x0][y0].op->y;
+                        cp.z = g.cells[x0][y0].op->z;
+                        pv.push_back(cp);
+                                                                //connect points ( -> line_Strip)
+                        cp.x = g.cells[x][y].op->x;
+                        cp.y = g.cells[x][y].op->y;
+                        cp.z = g.cells[x][y].op->z;
+                        pv.push_back(cp);
+                        
+                        //if (asd1) printf("|%d ->", nid);
+                        nid += 4;                               //reverse dir
+                        //if (asd1) printf(" %d ->", nid);
+                        if (nid > 7) nid -= 8;                  //prevent overshoot (/out of range error)
+                        //if (asd1) printf(" %d ->> ", nid);
+                        trg = false;                            //reset trigger
+                        x0 = x;                                 //set new cell as origin (x)
+                        y0 = y;                                 //set new cell as origin (y)
+                        if (asd1) printf("\n[%d][%d](%d)(%d) {%d} ", x0, y0, x, y, nid);
+                    }
+                    nid++;                                      //next neighbour
+                    if (asd1) printf(" %d ", nid);
+                    //if (asd1) printf("%d -> ", nid);
+                    if (nid > 15)
+                    {
+                        printf("\noh, no!\n");
+                        break;
+                    }
+                
+                    //the actual 'while' condition (with extra steps)
+                    if (x==i && y==j && nid == 6)               //while we have not reached (around, back to) the initial cell
+                    {
+                        areas[area].push_back(&g.cells[x][y]);  //add cell to registry (needed?)
+                            
+                        cp.x = g.cells[x0][y0].op->x;
+                        cp.y = g.cells[x0][y0].op->y;
+                        cp.z = g.cells[x0][y0].op->z;
+                        pv.push_back(cp);
+                                                                //connect points ( -> line_Strip)
+                        cp.x = g.cells[x][y].op->x;
+                        cp.y = g.cells[x][y].op->y;
+                        cp.z = g.cells[x][y].op->z;
+                        pv.push_back(cp);
+
+                        printf("\n_");
+                        break;
                     }
                 }
-                cp.x = poly[mn1].p->x;
-                cp.y = poly[mn1].p->y;
-                cp.z = poly[mn1].p->z;
-                pv.push_back(cp);
-                cp.x = poly[i].p->x;
-                cp.y = poly[i].p->y;
-                cp.z = poly[i].p->z;
-                pv.push_back(cp);
-                pv.push_back(cp);
-                cp.x = poly[mn2].p->x;
-                cp.y = poly[mn2].p->y;
-                cp.z = poly[mn2].p->z;
-                pv.push_back(cp);
+                while (1==1);
+                //while (!(x==i && y==j));                      //while we have not reached (around, back to) the initial cell
             }
-            else if (sn)    //singular line
-            {
-                cp.x = poly[n[0]].p->x;
-                cp.y = poly[n[0]].p->y;
-                cp.z = poly[n[0]].p->z;
-                pv.push_back(cp);
-                cp.x = poly[i].p->x;
-                cp.y = poly[i].p->y;
-                cp.z = poly[i].p->z;
-                pv.push_back(cp);
-            }
-            */
-            ///*//comment out this loop if using v 2.0
-            for (int j = 0; j < sn; j++)
-            {
-                cp.x = poly[n[j]].p->x;
-                cp.y = poly[n[j]].p->y;
-                cp.z = poly[n[j]].p->z;
-                pv.push_back(cp);
-                cp.x = poly[i].p->x;
-                cp.y = poly[i].p->y;
-                cp.z = poly[i].p->z;
-                pv.push_back(cp);
-            }
-            //*/
         }
     }
     return pv;
 }
 
-void Detector::gridder(std::vector<std::vector<Point3D>>& raw, std::vector<std::vector<int>>& statusgrid, visualization_msgs::MarkerArray& poly)
+void Detector::gridder(std::vector<std::vector<Point3D>>& raw, std::vector<std::vector<int>>& statusgrid, visualization_msgs::MarkerArray& poly, visualization_msgs::Marker& cndm)
 {
     if (!raw.size() || !statusgrid.size()) return;
     float grid_size_x = 30;
@@ -440,12 +376,11 @@ void Detector::gridder(std::vector<std::vector<Point3D>>& raw, std::vector<std::
         }
 
     std::vector<std::vector<cell*>> areas;
-    cclr(grid, areas);
-    s = areas.size();
+    cellpoly.points = wrap(grid, areas);
+    /*
+    std::vector<geometry_msgs::Point> tempoly = wrap(grid, areas);
     cellpoly.points.clear();
-    pcl::PointXYZI xyzi;
-    std::vector<cvertex> mesh;
-    cvertex meshp;
+    
     if (asd1) printf("\ncurb-cell data (debug) [area, cell]:\n");
     for (int i = 0; i < s; i++)
     {
@@ -456,11 +391,13 @@ void Detector::gridder(std::vector<std::vector<Point3D>>& raw, std::vector<std::
             {
                 if (asd1) printf("\n[%2d, %2d]: ", i, j);
             }
-            meshp = cvertex{areas[i][j], sop(areas[i][j])};
+            //sop(areas[i][j]);
             if (asd1) printf(" _ ");
-            if (meshp.p) mesh.push_back(meshp);
             //asd1 = false;
         }
+        
+        cellpoly.points.insert(cellpoly.points.end(),tempoly.begin(), tempoly.end());
+        
         cellpoly.points = wrapper(mesh);
         if (cellpoly.points.size()>1)
         {
@@ -469,6 +406,9 @@ void Detector::gridder(std::vector<std::vector<Point3D>>& raw, std::vector<std::
         }
         cellpoly.points.clear();
     }
+    */
+    poly.markers.push_back(cellpoly);
+    cellpoly.points.clear();
     
     s = statusgrid.size(); ss = statusgrid[0].size();
     for (int i = 0; i < s; i++)

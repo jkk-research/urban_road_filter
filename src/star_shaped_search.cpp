@@ -9,10 +9,11 @@ int rep = 360;                  //number of detection beams (how many parts/sect
 float width = 0.2;              //width of beams
 float Kfi;                      //internal parameter, for assigning the points to their corresponding sectors ( = 1 / [2pi/rep] = 1 / [angle between neighboring beams] )
 float slope_param;              //"slope" parameter for edge detection (given by 2 points, in radial direction/plane)
-int params::dmin_param;                 //(see below)
-float params::kdev_param;               //(see below)
-float params::kdist_param;              //(see below)
-float params::angleFilter3;             /*Csaplár László kódjához szükséges. Sugár irányú határérték (fokban).*/
+float params::kdev_param;               //coefficient: weighting the impact of deviation (difference) from average ( = overall sensitivity to changes)
+float params::kdist_param;              //coefficient: weighting the impact of the distance between points ( = sensitivity for height error at close points)
+bool params::starbeam_filter;                   //toggle usage of rectangular beams for starshaped algorithm instead of the whole sector (containing the beam)
+int params::dmin_param;                 //minimal number of points required to begin adaptive evaluation
+float params::angleFilter3;             //slope threshold (between two points in radial direction in order to detect them as curb)
 
 std::vector<box> beams(rep);        //beams
 std::vector<box *> beamp(rep + 1);  //pointers to the beams (+1 -> 0 AND 360)
@@ -38,25 +39,27 @@ void Detector::beam_init()    //beam initialization
             {
                 beams[i].yx = true;                 //aligning more with y-direction
                 beams[i].d = tan(0.5 * M_PI - fi);  // = 1/tan(fi) [coefficient]
-                beams[i].o = off / sin(fi);         //projection of half beam-width in the x-direction (how far from its centerline is the edge of the beam in the x-dir)
+                beams[i].o = abs(off / sin(fi));    //projection of half beam-width in the x-direction (how far from its centerline is the edge of the beam in the x-dir)
             }
             else
             {
-                beams[i].yx = false;        //aligning more with x-direction
-                beams[i].d = tan(fi);       //coefficient
-                beams[i].o = off / cos(fi); //y-axis projection of half beam-width
+                beams[i].yx = false;                //aligning more with x-direction
+                beams[i].d = tan(fi);               //coefficient
+                beams[i].o = abs(off / cos(fi));    //y-axis projection of half beam-width
             }
             beamp[i] = &beams[i];   //initializing the pointers
         }
     }
 
-    for (int i = 0, j = 1; j < rep; i++, j++)   //initializing the pointers to adjacent beams
+/*
+    for (int i = 0, j = 1; j < rep; i++, j++)   //initializing the pointers to adjacent beams (currently unused/not needed)
     {
         beams[i].l = &beams[j];
         beams[j].r = &beams[i];
     }
-    beams[0].r = &beams[rep];
-    beams[rep].l = &beams[0];
+    beams[0].r = &beams[rep-1];
+    beams[rep-1].l = &beams[0];
+*/
 
     Kfi = rep / (2 * M_PI); //should be 2pi/rep, but then we would have to divide by it every time - using division only once and then multiplying later on should be somewhat faster (?)
 }
@@ -66,35 +69,38 @@ void beamfunc(const int tid, std::vector<Point2D> &array2D) //beam algorithm (fi
     int i = 0, s = beams[tid].p.size(); //loop variables
     float c;                            //temporary variable to simplify things
 
-    if (beams[tid].yx)  //filtering the points lying outside the area of the beam... (case 1/2, y-direction)
+    if (params::starbeam_filter)
     {
-        while (i < s)   //iterating through points in the current sector (instead of a for loop - since 's' is not constant and 'i' needs to be incremented conditionally)
+        if (beams[tid].yx)  //filtering the points lying outside the area of the beam... (case 1/2, y-direction)
         {
-            c = abs(beams[tid].d * array2D[beams[tid].p[i].id].p.y);                        //x-coordinate of the beam's centerline at the point (at the "height" of its y-coordinate)
-            if ((c - beams[tid].o) < array2D[beams[tid].p[i].id].p.x && array2D[beams[tid].p[i].id].p.x < (c + beams[tid].o))  //whether it is inside the beam (by checking only x values on the line/"height" of the point's y-coordinate: whether the [x-coordinate of the] point falls between the [x-coordinates of the] two sides/borders of the beam
+            while (i < s)   //iterating through points in the current sector (instead of a for loop - since 's' is not constant and 'i' needs to be incremented conditionally)
             {
-                i++;    //okay, next one
-            }
-            else    //if outside the area
-            {
-                beams[tid].p.erase(beams[tid].p.begin() + i);   //remove point
-                s--;                                            //the size has shrunk because of the deletion of a point (and its place is taken by the next point, so 'i' does not need to be changed)
+                c = beams[tid].d * array2D[beams[tid].p[i].id].p.y;                        //x-coordinate of the beam's centerline at the point (at the "height" of its y-coordinate)
+                if ((c - beams[tid].o) < array2D[beams[tid].p[i].id].p.x && array2D[beams[tid].p[i].id].p.x < (c + beams[tid].o))  //whether it is inside the beam (by checking only x values on the line/"height" of the point's y-coordinate: whether the [x-coordinate of the] point falls between the [x-coordinates of the] two sides/borders of the beam
+                {
+                    i++;    //okay, next one
+                }
+                else        //if outside the area
+                {
+                    beams[tid].p.erase(beams[tid].p.begin() + i);   //remove point
+                    s--;                                            //the size has shrunk because of the deletion of a point (and its place is taken by the next point, so 'i' does not need to be changed)
+                }
             }
         }
-    }
-    else    //same but with x and y swapped (case 2/2, x-direction)
-    {
-        while (i < s)
+        else    //same but with x and y swapped (case 2/2, x-direction)
         {
-            c = abs(beams[tid].d * array2D[beams[tid].p[i].id].p.x);
-            if ((c - beams[tid].o) < array2D[beams[tid].p[i].id].p.y && array2D[beams[tid].p[i].id].p.y < (c + beams[tid].o))
+            while (i < s)
             {
-                i++;
-            }
-            else
-            {
-                beams[tid].p.erase(beams[tid].p.begin() + i);
-                s--;
+                c = beams[tid].d * array2D[beams[tid].p[i].id].p.x;
+                if ((c - beams[tid].o) < array2D[beams[tid].p[i].id].p.y && array2D[beams[tid].p[i].id].p.y < (c + beams[tid].o))
+                {
+                    i++;
+                }
+                else
+                {
+                    beams[tid].p.erase(beams[tid].p.begin() + i);
+                    s--;
+                }
             }
         }
     }
@@ -104,14 +110,14 @@ void beamfunc(const int tid, std::vector<Point2D> &array2D) //beam algorithm (fi
     {               //edge detection (edge of the roadside)
         if (s > 1)  //for less than 2 points it would be pointless
         {
-            int dmin = params::dmin_param;      //minimal number of points required to begin adaptive evaluation
             float kdev = params::kdev_param;    //coefficient: weighting the impact of deviation (difference) from average ( = overall sensitivity to changes)
             float kdist = params::kdist_param;  //coefficient: weighting the impact of the distance between points ( = sensitivity for height error at close points)
+            int dmin = params::dmin_param;      //minimal number of points required to begin adaptive evaluation
 
             float avg = 0, dev = 0, nan = 0;            //average value and absolute average deviation of the slope for adaptive detection + handling Not-a-Number values
             float ax, ay, bx, by, slp;                  //temporary variables (points 'a' and 'b' + slope)
             bx = beams[tid].p[0].r;                     //x = r-coordinate of the first point (radial position)
-            by = array2D[beams[tid].p[0].id].p.z;   //y = z-coordinate of the first point (height)
+            by = array2D[beams[tid].p[0].id].p.z;       //y = z-coordinate of the first point (height)
 
             for (int i = 1; i < s; i++) //edge detection based on the slope between point a and b
             {                           //updating points (a=b, b=next)
@@ -148,7 +154,7 @@ void beamfunc(const int tid, std::vector<Point2D> &array2D) //beam algorithm (fi
 void Detector::starShapedSearch(std::vector<Point2D> &array2D)  //entry point to the code, everything gets called here (except for initialization - that needs to be called separately, at the start of the program - "beam_init()")
 {
     beamp.push_back(&beams[0]);     //initializing "360 deg = 0 deg" pointer
-    int f, s = array2D.size();   //temporary variables
+    int f, s = array2D.size();      //temporary variables
     float r, fi;                    //polar coordinates
     slope_param = params::angleFilter3 * (M_PI / 180);
 

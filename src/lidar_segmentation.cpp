@@ -86,6 +86,25 @@ void marker_init3(visualization_msgs::Marker& m)
     m.lifetime = ros::Duration(0);
 }
 
+void marker_init5(visualization_msgs::Marker& m)
+{
+    m.header.frame_id = params::fixedFrame;
+    m.header.stamp = ros::Time();
+    m.type = visualization_msgs::Marker::SPHERE_LIST;
+    m.action = visualization_msgs::Marker::ADD;
+    m.pose.position.x = 0;
+    m.pose.position.y = 0;
+    m.pose.position.z = 0;
+    m.pose.orientation.x = 0.0;
+    m.pose.orientation.y = 0.0;
+    m.pose.orientation.z = 0.0;
+    m.pose.orientation.w = 1.0;
+    m.scale.x = 0.2;
+    m.scale.y = 0.2;
+    m.scale.z = 0.2;
+    m.lifetime = ros::Duration(0);
+}
+
 
 inline std_msgs::ColorRGBA setcolor(float r, float g, float b, float a)
 {
@@ -110,6 +129,7 @@ Detector::Detector(ros::NodeHandle* nh){
     pub_gridyellow = nh->advertise<visualization_msgs::Marker>("grid_yellow", 1);
     pub_gridgreen = nh->advertise<visualization_msgs::Marker>("grid_green", 1);
     pub_gridblack = nh->advertise<visualization_msgs::Marker>("grid_black", 1);
+    pub_cellndebug = nh->advertise<visualization_msgs::Marker>("cell_n_markers", 1);
     pub_gridpoly = nh->advertise<visualization_msgs::MarkerArray>("lane_polygons", 1);
 
     Detector::beam_init();
@@ -421,6 +441,10 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
     }
 
     visualization_msgs::Marker grid_red, grid_green, grid_yellow, grid_black;
+    
+    visualization_msgs::Marker cellnmarker;
+    marker_init5(cellnmarker);
+    cellnmarker.color = setcolor(0,0,0,0.5);
 
     marker_init3(grid_red);
     grid_red.color = setcolor(0.5, 0.0, 0.0, 0.5);
@@ -446,7 +470,7 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
             statusgrid[i][j] = 0;
         }
 
-    Detector::gridder(array3D, statusgrid, gridpoly);
+    Detector::gridder(array3D, statusgrid, gridpoly, cellnmarker);
 
     geometry_msgs::Point cpt;
     cpt.z = 0;
@@ -752,5 +776,6 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
     pub_gridgreen.publish(grid_green);
     pub_gridblack.publish(grid_black);
     pub_gridpoly.publish(gridpoly);
+    pub_cellndebug.publish(cellnmarker);
 
 }

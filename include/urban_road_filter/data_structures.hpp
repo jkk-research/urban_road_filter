@@ -58,7 +58,7 @@ struct polar    //polar-coordinate struct for the points
 struct box      //struct for detection beams
 {
     std::vector<polar> p; //points within the beam's area
-    box *l, *r;           //pointer to adjacent beams (currently not used)
+    //box *l, *r;           //pointer to adjacent beams (currently not used)
     bool yx;              //whether it is aligned more with the y-axis (than the x-axis)
     float o, d;           //internal parameters (trigonometry)
 };
@@ -77,9 +77,10 @@ namespace params{
   extern float angleFilter2;                                   /*Z = 0 érték mellett, két vektor által bezárt szög.*/
   extern float angleFilter3;                                   /*Csaplár László kódjához szükséges. Sugár irányú határérték (fokban).*/
   extern float min_X, max_X, min_Y, max_Y, min_Z, max_Z;       /*A vizsgált terület méretei.*/
-  extern int dmin_param;                 //(see below)
-  extern float kdev_param;               //(see below)
-  extern float kdist_param;              //(see below)
+  extern float kdev_param;                //(see below)
+  extern float kdist_param;               //(see below)
+  extern bool starbeam_filter;            //Toggle usage of rectangular beams for starshaped algorithm instead of the whole sector (containing the beam)
+  extern int dmin_param;                  //(see below)
   extern bool polysimp_allow;                           /*polygon-eygszerűsítés engedélyezése*/
   extern bool zavg_allow;                               /*egyszerűsített polygon z-koordinátái átlagból (engedély)*/
   extern float polysimp;                                 /*polygon-egyszerűsítési tényező (Ramer-Douglas-Peucker)*/
@@ -127,7 +128,7 @@ class Detector{
 
     void blindSpots(std::vector<std::vector<Point3D>>& array3D,int index,int* indexArray,float* maxDistance);
 
-    void gridder(std::vector<std::vector<Point3D>>& raw, std::vector<std::vector<int>>& statusgrid, visualization_msgs::MarkerArray& poly);
+    void gridder(std::vector<std::vector<Point3D>>& raw, std::vector<std::vector<int>>& statusgrid, visualization_msgs::MarkerArray& poly, visualization_msgs::Marker& cndm);
     
     private:
     ros::Publisher pub_road;        
@@ -140,6 +141,7 @@ class Detector{
     ros::Publisher pub_gridgreen;
     ros::Publisher pub_gridblack;
     ros::Publisher pub_gridpoly;
+    ros::Publisher pub_cellndebug;
 
     ros::Subscriber sub;
 
