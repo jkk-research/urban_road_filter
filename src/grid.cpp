@@ -157,25 +157,20 @@ struct cellgrid
     cellgrid(int x, int y) { cells.resize(x, std::vector<cell> (y) ); }             //constructor
 };
 
-void flroad(int i, int j, cellgrid& grid)   //depth-first recursive floodfill algorithm to find the driveable road
+void flroad(int i, int j, cellgrid& grid, int dir)   //depth-first recursive floodfill algorithm to find the driveable road
 {
     if (!grid.isvalid(i,j)) return;         //return if out of range
     if (grid.cells[i][j].type == 1)         //contains points (which are not curb-points)
     {
         grid.cells[i][j].type = 3;          //set as driveable
-        flroad(i+1,j, grid);
-        flroad(i-1,j, grid);
-        flroad(i,j+1, grid);
-        flroad(i,j-1, grid);
+        flroad(i+1,j, grid, 0);
+        flroad(i-1,j, grid, 1);
+        flroad(i,j+1, grid, 2);
+        flroad(i,j-1, grid, 3);
     }
-}
-
-void waller(int i, int j, cellgrid& grid, int dir)  //mark borders with road
-{
-    if (!grid.isvalid(i,j)) return;                 //return if out of range
-    if (grid.cells[i][j].type == 2)                 //if: target cell (contains curb point)
+    else if (grid.cells[i][j].type == 2)    //if: target cell (contains curb point)
     {
-        grid.cells[i][j].s += pow(2,dir);           //flip the correct bit in the "border-configuration" of the cell
+        grid.cells[i][j].s += pow(2,dir);   //flip the correct bit in the "border-configuration" of the cell
     }
 }
 
@@ -352,26 +347,7 @@ void Detector::gridder(std::vector<std::vector<Point3D>>& raw, std::vector<std::
                 else grid.cells[ix][iy].pp.push_back(&raw[i][j]);
             }
         }
-    flroad(int (-null_x) + 5, int (-null_y) -1, grid);                      //starting point for road detection
-
-    s = grid.cells.size();
-    if (asd1) printf("\n");
-    for (int i = 0; i < s; i++)
-    {
-        ss = grid.cells[i].size();
-        for (int j = 0; j < ss; j++)
-        {
-            grid.cells[i][j].x = i;         //late initialization of local cell variable (self coordinate)
-            grid.cells[i][j].y = j;         //late initialization of local cell variable (self coordinate)
-            if (grid.cells[i][j].type == 3) //for every road-cell: check every (4-way) neighbouring cells
-            {
-                waller(i+1,j, grid, 0);
-                waller(i-1,j, grid, 1);
-                waller(i,j+1, grid, 2);
-                waller(i,j-1, grid, 3);
-            }
-        }
-    }
+    flroad(int (-null_x) + 5, int (-null_y) +1, grid, 0);                      //starting point for road detection (HAS TO BE FREE AREA!)
     
     if (asd1)   //(debug) [that beautiful character-based, border-shape-adjusted matrix representation of the grid]
     {
@@ -394,6 +370,8 @@ void Detector::gridder(std::vector<std::vector<Point3D>>& raw, std::vector<std::
         for (int j = 0; j < ss; j++)
         {
             temptr = &grid.cells[i][j];
+            temptr->x = i;                                          //late initialization of local cell variable (self coordinate)
+            temptr->y = j;                                          //late initialization of local cell variable (self coordinate)
             if (temptr->type == 2 && !temptr->s) temptr->type = 4;  //has no borders with the road
         }
 
