@@ -19,7 +19,6 @@ PREPROCESSING
     Such areas are marked as driveable, forming a new group: type 3.
     Note that areas that may be accessible but are bordered (at least partially) by empty cells (insufficient sensor data) do NOT get marked as driveable.
     Areas that are checked this way but turn out to be type 2 (therefore have at least 1 border with a type 3 cell) are marked - assigned an id for the configuration of its borders.
-    Currently this last step is done by another, separate algorithm [waller()].
 4.: All cells are checked and the ones that are type 2 but share no borders with type 3 (having 0 as border id / not marked in the previous step) get reassigned as type 4.
 (type/color code summary below)
 
@@ -85,47 +84,7 @@ const int nluy[] =
 };
 
 
-void l_marker_init2(visualization_msgs::Marker& m) //DUPLICATE!!!!! MUST BE EXPORTED TO data_structures.hpp (along with the originals in lidar_segmentation.cpp) !!!!!
-{
-    m.header.frame_id = params::fixedFrame;
-    m.header.stamp = ros::Time();
-    m.type = visualization_msgs::Marker::SPHERE_LIST;
-    //m.type = visualization_msgs::Marker::LINE_STRIP;
-    //m.type = visualization_msgs::Marker::LINE_LIST;
-    m.action = visualization_msgs::Marker::ADD;
-    m.pose.position.x = 0;
-    m.pose.position.y = 0;
-    m.pose.position.z = 0;
-    m.pose.orientation.x = 0.0;
-    m.pose.orientation.y = 0.0;
-    m.pose.orientation.z = 0.0;
-    m.pose.orientation.w = 1.0;
-    m.scale.x = 0.5;
-    m.scale.y = 0.5;
-    m.scale.z = 0.5;
-    m.lifetime = ros::Duration(0);
-}
-
-void l_marker_init4(visualization_msgs::Marker& m) //DUPLICATE!!!!! MUST BE EXPORTED TO data_structures.hpp (along with the originals in lidar_segmentation.cpp) !!!!!
-{
-    m.header.frame_id = params::fixedFrame;
-    m.header.stamp = ros::Time();
-    //m.type = visualization_msgs::Marker::SPHERE_LIST;
-    //m.type = visualization_msgs::Marker::LINE_STRIP;
-    m.type = visualization_msgs::Marker::LINE_LIST;
-    m.action = visualization_msgs::Marker::ADD;
-    m.pose.position.x = 0;
-    m.pose.position.y = 0;
-    m.pose.position.z = 0;
-    m.pose.orientation.x = 0.0;
-    m.pose.orientation.y = 0.0;
-    m.pose.orientation.z = 0.0;
-    m.pose.orientation.w = 1.0;
-    m.scale.x = 0.2;
-    m.scale.y = 0.2;
-    m.scale.z = 0.2;
-    m.lifetime = ros::Duration(0);
-}
+//DUPLICATES!!!!! await exportation to header !!!!! --->
 
 inline std_msgs::ColorRGBA l_setcolor(float r, float g, float b, float a) 
 {
@@ -136,6 +95,37 @@ inline std_msgs::ColorRGBA l_setcolor(float r, float g, float b, float a)
     c.a = a;
     return c;
 }
+
+inline void l_msetscale(visualization_msgs::Marker& m, float s)
+{
+    m.scale.x = s;
+    m.scale.y = s;
+    m.scale.z = s;
+}
+inline void l_msetscale(visualization_msgs::Marker& m, float x, float y, float z)
+{
+    m.scale.x = x;
+    m.scale.y = y;
+    m.scale.z = z;
+}
+
+void l_marker_init2(visualization_msgs::Marker& m) 
+{
+    m.header.frame_id = params::fixedFrame;
+    m.header.stamp = ros::Time();
+    m.action = visualization_msgs::Marker::ADD;
+    m.pose.position.x = 0;
+    m.pose.position.y = 0;
+    m.pose.position.z = 0;
+    m.pose.orientation.x = 0.0;
+    m.pose.orientation.y = 0.0;
+    m.pose.orientation.z = 0.0;
+    m.pose.orientation.w = 1.0;
+    m.lifetime = ros::Duration(0);
+}
+
+// <---
+
 
 struct cell
 {
@@ -325,8 +315,11 @@ void Detector::gridder(std::vector<std::vector<Point3D>>& raw, std::vector<std::
     cellgrid grid (cellnumx, cellnumy);     //grid
     int s = raw.size(), ss = raw[0].size();
     int ix, iy; //x and y indices
+
     visualization_msgs::Marker cellpoly;
-    l_marker_init4(cellpoly);
+    l_marker_init2(cellpoly);
+    cellpoly.type = visualization_msgs::Marker::LINE_LIST;
+    l_msetscale(cellpoly, 0.2);
     cellpoly.color = l_setcolor(0.0, 0.0, 1.0, 0.5);
     cellpoly.id = 1020;
 
@@ -347,7 +340,7 @@ void Detector::gridder(std::vector<std::vector<Point3D>>& raw, std::vector<std::
                 else grid.cells[ix][iy].pp.push_back(&raw[i][j]);
             }
         }
-    flroad(int (-null_x) + 5, int (-null_y) +1, grid, 0);                      //starting point for road detection (HAS TO BE FREE AREA!)
+    flroad(int (-null_x) + 5, int (-null_y) -1, grid, 0);                   //starting point for road detection (HAS TO BE FREE AREA!)
     
     if (asd1)   //(debug) [that beautiful character-based, border-shape-adjusted matrix representation of the grid]
     {
@@ -370,8 +363,8 @@ void Detector::gridder(std::vector<std::vector<Point3D>>& raw, std::vector<std::
         for (int j = 0; j < ss; j++)
         {
             temptr = &grid.cells[i][j];
-            temptr->x = i;                                          //late initialization of local cell variable (self coordinate)
-            temptr->y = j;                                          //late initialization of local cell variable (self coordinate)
+            temptr -> x = i;                                        //late initialization of local cell variable (self coordinate)
+            temptr -> y = j;                                        //late initialization of local cell variable (self coordinate)
             if (temptr->type == 2 && !temptr->s) temptr->type = 4;  //has no borders with the road
         }
 

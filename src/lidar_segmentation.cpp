@@ -31,6 +31,29 @@ int cellnumy = ceil(grid_size_y / cell_size);
 
 std::vector<std::vector<int>> statusgrid(cellnumx, std::vector<int>(cellnumy,0));
 
+inline std_msgs::ColorRGBA setcolor(float r, float g, float b, float a)
+{
+    std_msgs::ColorRGBA c;
+    c.r = r;
+    c.g = g;
+    c.b = b;
+    c.a = a;
+    return c;
+}
+
+inline void msetscale(visualization_msgs::Marker& m, float s)
+{
+    m.scale.x = s;
+    m.scale.y = s;
+    m.scale.z = s;
+}
+inline void msetscale(visualization_msgs::Marker& m, float x, float y, float z)
+{
+    m.scale.x = x;
+    m.scale.y = y;
+    m.scale.z = z;
+}
+
 void marker_init(visualization_msgs::Marker& m)
 {
     m.pose.position.x = 0;
@@ -51,8 +74,6 @@ void marker_init2(visualization_msgs::Marker& m)
 {
     m.header.frame_id = params::fixedFrame;
     m.header.stamp = ros::Time();
-    //m.type = visualization_msgs::Marker::SPHERE_LIST;
-    m.type = visualization_msgs::Marker::LINE_STRIP;
     m.action = visualization_msgs::Marker::ADD;
     m.pose.position.x = 0;
     m.pose.position.y = 0;
@@ -61,59 +82,14 @@ void marker_init2(visualization_msgs::Marker& m)
     m.pose.orientation.y = 0.0;
     m.pose.orientation.z = 0.0;
     m.pose.orientation.w = 1.0;
-    m.scale.x = 1.0;
-    m.scale.y = 1.0;
-    m.scale.z = 0.1;
     m.lifetime = ros::Duration(0);
 }
 
 void marker_init3(visualization_msgs::Marker& m)
 {
-    m.header.frame_id = params::fixedFrame;
-    m.header.stamp = ros::Time();
+    marker_init2(m);
     m.type = visualization_msgs::Marker::CUBE_LIST;
-    m.action = visualization_msgs::Marker::ADD;
-    m.pose.position.x = 0;
-    m.pose.position.y = 0;
-    m.pose.position.z = 0;
-    m.pose.orientation.x = 0.0;
-    m.pose.orientation.y = 0.0;
-    m.pose.orientation.z = 0.0;
-    m.pose.orientation.w = 1.0;
-    m.scale.x = 1.0;
-    m.scale.y = 1.0;
-    m.scale.z = 0.1;
-    m.lifetime = ros::Duration(0);
-}
-
-void marker_init5(visualization_msgs::Marker& m)
-{
-    m.header.frame_id = params::fixedFrame;
-    m.header.stamp = ros::Time();
-    m.type = visualization_msgs::Marker::SPHERE_LIST;
-    m.action = visualization_msgs::Marker::ADD;
-    m.pose.position.x = 0;
-    m.pose.position.y = 0;
-    m.pose.position.z = 0;
-    m.pose.orientation.x = 0.0;
-    m.pose.orientation.y = 0.0;
-    m.pose.orientation.z = 0.0;
-    m.pose.orientation.w = 1.0;
-    m.scale.x = 0.2;
-    m.scale.y = 0.2;
-    m.scale.z = 0.2;
-    m.lifetime = ros::Duration(0);
-}
-
-
-inline std_msgs::ColorRGBA setcolor(float r, float g, float b, float a)
-{
-    std_msgs::ColorRGBA c;
-    c.r = r;
-    c.g = g;
-    c.b = b;
-    c.a = a;
-    return c;
+    msetscale(m, 1, 1, 0.1);
 }
 
 Detector::Detector(ros::NodeHandle* nh){
@@ -443,7 +419,9 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
     visualization_msgs::Marker grid_red, grid_green, grid_yellow, grid_black;
     
     visualization_msgs::Marker cellnmarker;
-    marker_init5(cellnmarker);
+    marker_init2(cellnmarker);
+    cellnmarker.type = visualization_msgs::Marker::SPHERE_LIST;
+    msetscale(cellnmarker, 0.2);
     cellnmarker.color = setcolor(0,0,0,0.5);
 
     marker_init3(grid_red);
