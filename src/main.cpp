@@ -26,6 +26,7 @@ void paramsCallback(urban_road_filter::LidarFiltersConfig &config, uint32_t leve
     params::kdist_param = config.kdist_param;
     params::starbeam_filter = config.starbeam_filter;
     params::dmin_param = config.dmin_param;
+    params::cell_size = config.grid_cell_size;
     params::polysimp_allow = config.simple_poly_allow;
     params::polysimp = config.poly_s_param;
     params::zavg_allow = config.poly_z_avg_allow;

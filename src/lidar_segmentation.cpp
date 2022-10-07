@@ -20,16 +20,17 @@ bool        params::zavg_allow = true;      //enable usage of average 'z' value 
 float       params::polysimp = 0.5;         //coefficient of polygon simplification (ramer-douglas-peucker)
 float       params::polyz = -1.5;           //manually set z-coordinate (output polygon)
 
+float       params::cell_size = 1;          //set size of grid cells
+
+float       grid_size_x;
+float       grid_size_y;
+int         cellnumx;
+int         cellnumy;
+
 int         ghostcount = 0;                 //counter variable helping to remove obsolete markers (ghosts)
 int         polyghostp = 0;                 //polygon ghost "pointer" (id holder)
 
-float grid_size_x = 30;//abs(params::max_X - params::min_X);
-float grid_size_y = 20;//abs(params::max_Y - params::min_Y);
-float cell_size = 1;
-int cellnumx = ceil(grid_size_x / cell_size);
-int cellnumy = ceil(grid_size_y / cell_size);
-
-std::vector<std::vector<int>> statusgrid(cellnumx, std::vector<int>(cellnumy,0));
+std::vector<std::vector<int>> statusgrid;
 
 inline std_msgs::ColorRGBA setcolor(float r, float g, float b, float a)
 {
@@ -89,7 +90,7 @@ void marker_init3(visualization_msgs::Marker& m)
 {
     marker_init2(m);
     m.type = visualization_msgs::Marker::CUBE_LIST;
-    msetscale(m, 1, 1, 0.1);
+    msetscale(m, params::cell_size, params::cell_size, 0.1);
 }
 
 Detector::Detector(ros::NodeHandle* nh){
@@ -415,6 +416,12 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
                 cloud_filtered_High.push_back(pt);
         }
     }
+    
+    /* grid stuff */
+    grid_size_x = params::max_X - params::min_X;
+    grid_size_y = params::max_Y - params::min_Y;
+    cellnumx = ceil(grid_size_x / params::cell_size);
+    cellnumy = ceil(grid_size_y / params::cell_size);
 
     visualization_msgs::Marker grid_red, grid_green, grid_yellow, grid_black;
     
@@ -442,6 +449,8 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
 
     visualization_msgs::MarkerArray gridpoly;
 
+    statusgrid.resize(cellnumx, std::vector<int>(cellnumy,0));
+
     for (int i = 0; i < cellnumx; i++)
         for (int j = 0; j < cellnumy; j++)
         {
@@ -456,8 +465,8 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
     for (int i = 0; i < cellnumx; i++)
         for (int j = 0; j < cellnumy; j++)
         {
-            cpt.x = params::min_X + cell_size * (i + 0.5);
-            cpt.y = params::min_Y + cell_size * (j + 0.5);
+            cpt.x = params::min_X + params::cell_size * (i + 0.5);
+            cpt.y = params::min_Y + params::cell_size * (j + 0.5);
             switch(statusgrid[i][j])
             {
                 case 0:

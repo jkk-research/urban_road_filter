@@ -81,6 +81,7 @@ namespace params{
   extern float kdist_param;               //(see below)
   extern bool starbeam_filter;            //Toggle usage of rectangular beams for starshaped algorithm instead of the whole sector (containing the beam)
   extern int dmin_param;                  //(see below)
+  extern float cell_size;
   extern bool polysimp_allow;                           /*polygon-eygszerűsítés engedélyezése*/
   extern bool zavg_allow;                               /*egyszerűsített polygon z-koordinátái átlagból (engedély)*/
   extern float polysimp;                                 /*polygon-egyszerűsítési tényező (Ramer-Douglas-Peucker)*/

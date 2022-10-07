@@ -39,7 +39,10 @@ code summary:
 
 geometry_msgs::Point tempoint;
 
-bool asd1 = false;   //toggle debug output to console
+bool asd1 = false;  //toggle debug output to console
+
+float flx = 5;      //x-coordinate of road detection starting point
+float fly = 0;      //y-coordinate of road detection starting point
 
 //debug tool
 const char bshape[] = 
@@ -303,18 +306,17 @@ std::vector<geometry_msgs::Point> wrap(cellgrid& g, std::vector<std::vector<cell
 
 void Detector::gridder(std::vector<std::vector<Point3D>>& raw, std::vector<std::vector<int>>& statusgrid, visualization_msgs::MarkerArray& poly, visualization_msgs::Marker& cndm)
 {
-    if (!raw.size() || !statusgrid.size()) return;  //(just in case sth goes terrribly wrong)
-    float grid_size_x = 30;                 //to do: size from parameter
-    float grid_size_y = 20;                 //to do: size from parameter
-    int cellnumx = statusgrid.size();       //number of cells in x direction
-    int cellnumy = statusgrid[0].size();    //number of cells in y direction
-    float cell_size = 1;                    //to do: size from parameter
-    float null_x = 0;                       //x offset (from center)
-    float null_y = - grid_size_y / 2;       //y offset (from center)
+    if (!raw.size() || !statusgrid.size()) return;      //(just in case sth goes terrribly wrong)
+    float grid_size_x = params::max_X - params::min_X;  //to do: size from parameter
+    float grid_size_y = params::max_Y - params::min_Y;  //to do: size from parameter
+    int cellnumx = statusgrid.size();                   //number of cells in x direction
+    int cellnumy = statusgrid[0].size();                //number of cells in y direction
+    float null_x = 0;                                   //x offset (from center)
+    float null_y = - grid_size_y / 2;                   //y offset (from center)
 
-    cellgrid grid (cellnumx, cellnumy);     //grid
+    cellgrid grid (cellnumx, cellnumy);                 //grid
     int s = raw.size(), ss = raw[0].size();
-    int ix, iy; //x and y indices
+    int ix, iy;                                         //x and y indices
 
     visualization_msgs::Marker cellpoly;
     l_marker_init2(cellpoly);
@@ -326,8 +328,8 @@ void Detector::gridder(std::vector<std::vector<Point3D>>& raw, std::vector<std::
     for (int i=0; i < s; i++)
         for (int j=0; j < ss; j++)
         {
-            ix = floor( (raw[i][j].p.x - null_x) / cell_size);  //set indices
-            iy = floor( (raw[i][j].p.y - null_y) / cell_size);  //set indices
+            ix = floor( (raw[i][j].p.x - null_x) / params::cell_size);      //set indices
+            iy = floor( (raw[i][j].p.y - null_y) / params::cell_size);      //set indices
             if (grid.isvalid(ix, iy))
             {
                 
@@ -340,9 +342,9 @@ void Detector::gridder(std::vector<std::vector<Point3D>>& raw, std::vector<std::
                 else grid.cells[ix][iy].pp.push_back(&raw[i][j]);
             }
         }
-    flroad(int (-null_x) + 5, int (-null_y) -1, grid, 0);                   //starting point for road detection (HAS TO BE FREE AREA!)
+    flroad(int (flx/params::cell_size), int (cellnumy/2 -1 + fly/params::cell_size), grid, 0);  //starting point for road detection (HAS TO BE FREE AREA!)
     
-    if (asd1)   //(debug) [that beautiful character-based, border-shape-adjusted matrix representation of the grid]
+    if (asd1)   //(debug) [that beautiful character-based, border-shape-displaying matrix representation of the grid]
     {
         printf("\nshape of cell borders:\n");
         for (int i = s-1; i >= 0; i--)
