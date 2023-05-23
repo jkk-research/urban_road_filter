@@ -75,6 +75,7 @@ If you use any of this code please consider citing the [paper](https://www.mdpi.
 - [`linefit_ground_segmentation`](https://github.com/lorenwel/linefit_ground_segmentation) (ROS)
 - [`curb_detection`](https://github.com/linyliny/curb_detection) (ROS)
 - [`3DLidar_curb_detection`](https://github.com/SohaibAl-emara/3D_Lidar_Curb_Detection) (ROS)
+- [`lidar_filter`](https://github.com/ZoltanTozser/lidar_filter)
 - Many more algorithms without code mentioned in the [paper](https://doi.org/10.3390/s22010194).
 
 # Videos and images
