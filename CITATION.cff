@@ -1,0 +1,30 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+- family-names: "Horváth"
+  given-names: "Ernő"
+  orcid: "https://orcid.org/0000-0001-5083-2073"
+- family-names: "Pozna"
+  given-names: "Claudiu"
+- family-names: "Unger"
+  given-names: "Miklós"
+  orcid: "https://orcid.org/0000-0003-3518-1107"
+title: "urban_road_filter"
+version: 1.1.2
+date-released: 2023-05-24
+url: "https://github.com/jkk-research/urban_road_filter"
+preferred-citation:
+  type: article
+  authors:
+  - family-names: "Horváth"
+    given-names: "Ernő"
+    orcid: "https://orcid.org/0000-0001-5083-2073"
+  - family-names: "Pozna"
+    given-names: "Claudiu"
+  - family-names: "Unger"
+    given-names: "Miklós"
+    orcid: "https://orcid.org/0000-0003-3518-1107"
+  doi: "10.3390/s22010194"
+  journal: "Sensors"
+  title: "Real-Time LIDAR-Based Urban Road and Sidewalk Detection for Autonomous Vehicles"
+  year: 2022
