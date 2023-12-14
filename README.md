@@ -95,11 +95,18 @@ If you use any of this code please consider citing the [paper](https://www.mdpi.
 ```mermaid
 flowchart LR
 
-P[points] -->|sensor_msgs/PointCloud2| U(urban_road_filt)
-U --> |sensor_msgs/PointCloud2| A[curb]
-U --> |sensor_msgs/PointCloud2| B[road] 
-U --> |sensor_msgs/PointCloud2| C[road_probably]
-U --> |sensor_msgs/PointCloud2| D[roi]
-U --> |visualization_msgs/MarkerArray| E[road_marker]
+P[points]:::gray -->|sensor_msgs/PointCloud2| U([urban_road_filt</br>node]):::gray
+U --> |sensor_msgs/PointCloud2| A[curb]:::gray
+U --> |sensor_msgs/PointCloud2| B[road]:::gray 
+U --> |sensor_msgs/PointCloud2| C[road_probably]:::gray
+U --> |sensor_msgs/PointCloud2| D[roi]:::gray
+U --> |visualization_msgs/MarkerArray| E[road_marker]:::gray
+
+
+classDef light fill:#34aec5,stroke:#152742,stroke-width:2px,color:#152742  
+classDef dark fill:#152742,stroke:#34aec5,stroke-width:2px,color:#34aec5
+classDef white fill:#ffffff,stroke:#152742,stroke-width:2px,color:#152742
+classDef gray fill:#f6f8fa,stroke:#152742,stroke-width:2px,color:#152742
+classDef red fill:#ef4638,stroke:#152742,stroke-width:2px,color:#fff
 
 ```
