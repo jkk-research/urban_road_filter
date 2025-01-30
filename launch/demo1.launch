@@ -1,8 +1,0 @@
-<launch>
-    <node name="rqt_conf_gui" pkg="rqt_reconfigure" type="rqt_reconfigure" output="screen"/>
-    <node name="rviz_config" pkg="rviz" type="rviz"  args="-d $(find urban_road_filter)/config/demo1.rviz" output="screen"/>
-    <group ns="urban_road_filter">
-        <node name="urban_road_filt" pkg="urban_road_filter" type="lidar_road" output="screen">
-        </node>
-    </group>
-</launch>
