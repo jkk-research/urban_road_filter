@@ -4,27 +4,42 @@
 
 # Dependency
 
-- [ROS](http://wiki.ros.org/ROS/Installation) (tested with Kinetic and Melodic)
+- [ROS2](https://docs.ros.org/en/humble/Installation.html) (Developed on Humble)
 - [PCL](https://pointclouds.org/)
+  
+# Switch to rmw_cyclonedds
+------------------------
+
+Switch from other rmw to rmw_cyclonedds by specifying the environment variable.
+
+```
+
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+```
+Source the change in your bashrc or zshrc
+```
+source ~/.bashrc # or .zshrc if you are using zsh
+```
 
 # Install
 
 Use the following commands to download and compile the package.
 
 ```
-cd ~/catkin_ws/src
+cd ~/ros2_ws/src
 git clone https://github.com/jkk-research/urban_road_filter
-catkin build urban_road_filter
+colcon build --packages-select  urban_road_filter
 ```
 
 # Getting started
 
-Issue the following commands to start roscore, download and play sample data, and start the algorithm with visualization. You can also watch this as a [youtube tutorial](https://www.youtube.com/watch?v=HHnj4VcbSy4).
+Issue the following commands to start ROS 2, download and play sample data, and start the algorithm with visualization. You can also watch this as a [YouTube tutorial](https://www.youtube.com/watch?v=HHnj4VcbSy4).
 
-In a **new terminal** start roscore:
+In a **new terminal** source your ROS 2 workspace and start the ROS 2 daemon:
 
 ```
-roscore
+source ~/ros2_ws/install/setup.bash
+ros2 daemon start
 ```
 
 In a **new terminal** go to your bag folder (e.g. `~/Downloads`):
@@ -33,22 +48,22 @@ In a **new terminal** go to your bag folder (e.g. `~/Downloads`):
 cd ~/Downloads
 ```
 
-Download a sample rosbag (~3,3 GB):
+Download a sample rosbag (~3.3 GB):
 
-```r
+```sh
 wget https://laesze-my.sharepoint.com/:u:/g/personal/herno_o365_sze_hu/EYl_ahy5pgBBhNHt5ZkiBikBoy_j_x95E96rDtTsxueB_A?download=1 -O leaf-2021-04-23-campus.bag
 ```
 
 Play rosbag:
 
-```r
-rosbag play -l ~/Downloads/leaf-2021-04-23-campus.bag
+```sh
+ros2 bag play ~/Downloads/leaf-2021-04-23-campus.bag
 ```
 
-In a **new terminal** start the `urban_road_filter` node, `rviz` and `rqt_reconfigure` with roslaunch:
+In a **new terminal** start the `urban_road_filter` node and `rviz2`:
 
-```
-roslaunch urban_road_filter demo1.launch
+```sh
+ros2 launch urban_road_filter demo.launch.py
 ```
 
 # Cite & paper

@@ -1,0 +1,35 @@
+urban_road_filter:
+  ros__parameters:
+    fixed_frame: "left_os1/os1_lidar"
+    topic_name: "/left_os1/os1_cloud_node/points"
+    x_zero_method: True
+    z_zero_method: True
+    star_shaped_method: True
+    blind_spots: True
+
+    xDirection: 0  # 0: bothX, 1: positiveX, 2: negativeX
+    interval: 0.1800
+    curb_height: 0.0500
+    curb_points: 5
+    beamZone: 30.0
+
+    min_x: 0.0
+    max_x: 30.0
+    min_y: -10.0
+    max_y: 10.0
+    min_z: -3.0
+    max_z: -1.0
+
+    cylinder_deg_x: 150.0
+    cylinder_deg_z: 140.0
+    curb_slope_deg: 50.0
+
+    kdev_param: 1.225
+    kdist_param: 2.0
+    starbeam_filter: False
+    dmin_param: 10
+
+    simple_poly_allow: True
+    poly_s_param: 0.7
+    poly_z_manual: -1.5
+    poly_z_avg_allow: True

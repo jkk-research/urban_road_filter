@@ -1,4 +1,9 @@
 #include "urban_road_filter/data_structures.hpp"
+#include "rclcpp/rclcpp.hpp"
+#include "sensor_msgs/msg/point_cloud2.hpp"
+#include "visualization_msgs/msg/marker_array.hpp"
+#include "pcl_conversions/pcl_conversions.h"
+#include "pcl_ros/transforms.hpp"
 
 /*Global variables.*/
 int         channels = 64;                  //The number of channels of the LIDAR .
@@ -22,7 +27,7 @@ float       params::polyz = -1.5;           //manually set z-coordinate (output 
 
 int         ghostcount = 0;                 //counter variable helping to remove obsolete markers (ghosts)
 
-void marker_init(visualization_msgs::Marker& m)
+void marker_init(visualization_msgs::msg::Marker& m)
 {
     m.pose.position.x = 0;
     m.pose.position.y = 0;
@@ -38,9 +43,9 @@ void marker_init(visualization_msgs::Marker& m)
     m.scale.z = 0.5;
 }
 
-inline std_msgs::ColorRGBA setcolor(float r, float g, float b, float a)
+inline std_msgs::msg::ColorRGBA setcolor(float r, float g, float b, float a)
 {
-    std_msgs::ColorRGBA c;
+    std_msgs::msg::ColorRGBA c;
     c.r = r;
     c.g = g;
     c.b = b;
@@ -48,20 +53,20 @@ inline std_msgs::ColorRGBA setcolor(float r, float g, float b, float a)
     return c;
 }
 
-Detector::Detector(ros::NodeHandle* nh){
-    /*subscribing to the given topic*/
-    sub = nh->subscribe(params::topicName, 1, &Detector::filtered,this);
-    /*publishing filtered points*/
-    pub_road = nh->advertise<pcl::PCLPointCloud2>("road", 1);
-    pub_high = nh->advertise<pcl::PCLPointCloud2>("curb", 1);
-    pub_box = nh->advertise<pcl::PCLPointCloud2>("roi", 1); // ROI - region of interest
-    pub_pobroad = nh->advertise<pcl::PCLPointCloud2>("road_probably", 1);
-    pub_marker = nh->advertise<visualization_msgs::MarkerArray>("road_marker", 1);
+Detector::Detector(rclcpp::Node::SharedPtr node) {
+    /* subscribing to the given topic */
+    sub = node->create_subscription<sensor_msgs::msg::PointCloud2>(
+        params::topicName, 1, std::bind(&Detector::filtered, this, std::placeholders::_1));
+    /* publishing filtered points */
+    pub_road = node->create_publisher<sensor_msgs::msg::PointCloud2>("road", 1);
+    pub_high = node->create_publisher<sensor_msgs::msg::PointCloud2>("curb", 1);
+    pub_box = node->create_publisher<sensor_msgs::msg::PointCloud2>("roi", 1); // ROI - region of interest
+    pub_pobroad = node->create_publisher<sensor_msgs::msg::PointCloud2>("road_probably", 1);
+    pub_marker = node->create_publisher<visualization_msgs::msg::MarkerArray>("road_marker", 1);
 
     Detector::beam_init();
 
-    ROS_INFO("Ready");
-
+    RCLCPP_INFO(node->get_logger(), "Ready");
 }
 
 /*FUNCTIONS*/
@@ -92,16 +97,18 @@ void Detector::quickSort(std::vector<std::vector<Point3D>>& array3D, int arc, in
     }
 }
 
-void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
-    /*variables for the "for" loops*/
+void Detector::filtered(const sensor_msgs::msg::PointCloud2::SharedPtr cloud_msg) {
+    /* variables for the "for" loops */
     int i, j, k, l;
 
-    pcl::PointXYZI pt;                                                                      //temporary variable for storing a point
-    auto cloud_filtered_Box = boost::make_shared<pcl::PointCloud<pcl::PointXYZI>>(cloud);   //all points in the detection area
-    pcl::PointCloud<pcl::PointXYZI> cloud_filtered_Road;                                    //filtered points (driveable road)
-    pcl::PointCloud<pcl::PointXYZI> cloud_filtered_ProbablyRoad;                            //filtered points (non-driveable road)
-    pcl::PointCloud<pcl::PointXYZI> cloud_filtered_High;                                    //filtered points (non-road)
+    pcl::PointCloud<pcl::PointXYZI> cloud;
+    pcl::fromROSMsg(*cloud_msg, cloud);
 
+    pcl::PointXYZI pt;                                                                      // temporary variable for storing a point
+    auto cloud_filtered_Box = boost::make_shared<pcl::PointCloud<pcl::PointXYZI>>(cloud);   // all points in the detection area
+    pcl::PointCloud<pcl::PointXYZI> cloud_filtered_Road;                                    // filtered points (driveable road)
+    pcl::PointCloud<pcl::PointXYZI> cloud_filtered_ProbablyRoad;                            // filtered points (non-driveable road)
+    pcl::PointCloud<pcl::PointXYZI> cloud_filtered_High;                                    // filtered points (non-road)
 
     auto filterCondition = boost::make_shared<FilteringCondition<pcl::PointXYZI>>(
         [=](const pcl::PointXYZI& point){
@@ -116,32 +123,32 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
     condition_removal.setInputCloud(cloud_filtered_Box);
     condition_removal.filter(*cloud_filtered_Box);
 
-    /*number of points in the detection area*/
+    /* number of points in the detection area */
     size_t piece = cloud_filtered_Box->points.size();
 
-    /*A minimum of 30 points are requested in the detection area to avoid errors.
-    Also, there is not much point in evaluating less data than that.*/
+    /* A minimum of 30 points are requested in the detection area to avoid errors.
+    Also, there is not much point in evaluating less data than that. */
     if (piece < 30){
         return;
     }
 
     std::vector<Point2D> array2D(piece);
 
-    /*variable for storing the input for trigonometric functions*/
+    /* variable for storing the input for trigonometric functions */
     float bracket;
 
-    /*A 1D array containing the various angular resolutions.
+    /* A 1D array containing the various angular resolutions.
     This equals to the number of LiDAR channels.
-    It is important to fill it with 0 values.*/
+    It is important to fill it with 0 values. */
     float angle[channels] = {0};
 
-    /*This helps to fill the 1D array containing the angular resolutions.*/
+    /* This helps to fill the 1D array containing the angular resolutions. */
     int index = 0;
 
-    /*whether the given angle corresponds to a new arc*/
+    /* whether the given angle corresponds to a new arc */
     int newCircle;
 
-    /*filling the 2D array*/
+    /* filling the 2D array */
     for (i = 0; i < piece; i++){
         /*--- filling the first 4 columns ---*/
         array2D[i].p = cloud_filtered_Box->points[i];
@@ -150,13 +157,13 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
         /*--- filling the 5. column ---*/
         bracket = abs(array2D[i].p.z) / array2D[i].d;
 
-        /*required because of rounding errors*/
+        /* required because of rounding errors */
         if (bracket < -1)
             bracket = -1;
         else if (bracket > 1)
             bracket = 1;
 
-        /*calculation and conversion to degrees*/
+        /* calculation and conversion to degrees */
         if (array2D[i].p.z < 0)
         {
             array2D[i].alpha = acos(bracket) * 180 / M_PI;
@@ -165,12 +172,12 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
             array2D[i].alpha = (asin(bracket) * 180 / M_PI) + 90;
         }
 
-        /*setting the index*/
-        /*Our basic assumption is that the angle corresponds to a new circle/arc.*/
+        /* setting the index */
+        /* Our basic assumption is that the angle corresponds to a new circle/arc. */
         newCircle = 1;
 
-        /*If this value has already occured (within the specified interval), then this is not a new arc.
-        Which means that "newCircle = 0", we can exit the loop, no further processing required.*/
+        /* If this value has already occured (within the specified interval), then this is not a new arc.
+        Which means that "newCircle = 0", we can exit the loop, no further processing required. */
         for (j = 0; j < channels; j++)
         {
             if (angle[j] == 0)
@@ -183,11 +190,11 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
             }
         }
 
-        /*If no such value is registered in the array, then it's a new circle/arc.*/
+        /* If no such value is registered in the array, then it's a new circle/arc. */
         if (newCircle == 1)
         {
-            /*We cannot allow the program to halt with a segmentation fault error.
-            If for any reason there would come to be more than 64 arcs/circles, an error would occur.*/
+            /* We cannot allow the program to halt with a segmentation fault error.
+            If for any reason there would come to be more than 64 arcs/circles, an error would occur. */
             if (index < channels)
             {
                 angle[index] = array2D[i].alpha;
@@ -195,34 +202,33 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
             }
         }
     }
-    /*calling starShapedSearch algorithm*/
+    /* calling starShapedSearch algorithm */
     if (params::star_shaped_method )
         Detector::starShapedSearch(array2D);
     
-
-    /*Sorting the angular resolutions by ascending order...
-    The smallest will be the first arc, etc..*/
+    /* Sorting the angular resolutions by ascending order...
+    The smallest will be the first arc, etc.. */
     std::sort(angle, angle + index);
 
     std::vector<std::vector<Point3D>> array3D(channels,std::vector<Point3D>(piece));
 
-    /*This is required to set up the row indices of
+    /* This is required to set up the row indices of
     the groups ("channels") containing the arcs.
-    It is important to fill it with 0 values.*/
+    It is important to fill it with 0 values. */
     int indexArray[channels] = {0};
 
-    /*A 1D array. The values of points that have the greatest distance from the origo.*/
+    /* A 1D array. The values of points that have the greatest distance from the origo. */
     float maxDistance[channels] = {0};
 
-    /*variable helping to handle errors caused by wrong number of channels.*/
+    /* variable helping to handle errors caused by wrong number of channels. */
     int results;
 
-    /*filling the 3D array*/
+    /* filling the 3D array */
     for (i = 0; i < piece; i++)
     {
         results = 0;
 
-        /*selecting the desired arc*/
+        /* selecting the desired arc */
         for (j = 0; j < index; j++)
         {
             if (abs(angle[j] - array2D[i].alpha) <= params::interval)
@@ -234,17 +240,17 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
 
         if (results == 1)
         {
-            /*assigning values from the 2D array*/
+            /* assigning values from the 2D array */
             array3D[j][indexArray[j]].p = array2D[i].p;
 
-            /*the known "high" points*/
+            /* the known "high" points */
             if (params::star_shaped_method )
                 array3D[j][indexArray[j]].isCurbPoint = array2D[i].isCurbPoint;
 
-            /*The only difference here is that the distance is calculated in 2D - with no regard to the 'z' value.*/
+            /* The only difference here is that the distance is calculated in 2D - with no regard to the 'z' value. */
             array3D[j][indexArray[j]].d = sqrt(pow(array2D[i].p.x, 2) + pow(array2D[i].p.y, 2));
 
-            /*filling the 5. column with the angular position of points, in degrees.*/
+            /* filling the 5. column with the angular position of points, in degrees. */
             bracket = (abs(array3D[j][indexArray[j]].p.x)) / (array3D[j][indexArray[j]].d);
             if (bracket < -1)
                 bracket = -1;
@@ -285,23 +291,23 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
     float d;
 
     /*-- step 2.: filtering road points --*/
-    /*ordering the elements of the array by angle on every arc*/
+    /* ordering the elements of the array by angle on every arc */
     for (i = 0; i < index; i++){
         quickSort(array3D, i, 0, indexArray[i] - 1);
     }
-    /*blindspot detection*/
+    /* blindspot detection */
     Detector::blindSpots(array3D,index,indexArray,maxDistance);
 
     /*-- step 3: searching for marker points - the farthest green point within the given angle --*/
-    /*It contains the points of the marker. The first three columns contain the X - Y - Z coordinates
-    and the fourth column contains value 0 or 1 depending on whether there is a point within the given angle that is not marked as road.*/
+    /* It contains the points of the marker. The first three columns contain the X - Y - Z coordinates
+    and the fourth column contains value 0 or 1 depending on whether there is a point within the given angle that is not marked as road. */
     float markerPointsArray[piece][4];
-    float maxDistanceRoad;              //the distance of the farthest green point within the given angle
-    int cM = 0;                         //variable helping to fill the marker with points (c - counter, M - Marker)
-    int ID1, ID2;                       //which arc does the point fall onto (ID1) and (ordinally) which point is it (ID2)
-    int redPoints;                      //whether there is a high point in the examined segment or a point that has not been marked as either road or high point
+    float maxDistanceRoad;              // the distance of the farthest green point within the given angle
+    int cM = 0;                         // variable helping to fill the marker with points (c - counter, M - Marker)
+    int ID1, ID2;                       // which arc does the point fall onto (ID1) and (ordinally) which point is it (ID2)
+    int redPoints;                      // whether there is a high point in the examined segment or a point that has not been marked as either road or high point
 
-    /*checking the points by 1 degree at a time*/
+    /* checking the points by 1 degree at a time */
     for (i = 0; i <= 360; i++)
     {
         ID1 = -1;
@@ -309,19 +315,19 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
         maxDistanceRoad = 0;
         redPoints = 0;
 
-        /*iterating through all the points of all the arcs*/
+        /* iterating through all the points of all the arcs */
         for (j = 0; j < index; j++)
         {
             for (k = 0; k < indexArray[j]; k++)
             {
-                /*If a non-road point is found, then we break the loop, because there will not be a road point found later on and value 1 will be assigned to the variable "redPoints".*/
+                /* If a non-road point is found, then we break the loop, because there will not be a road point found later on and value 1 will be assigned to the variable "redPoints". */
                 if (array3D[j][k].isCurbPoint != 1 && array3D[j][k].alpha >= i && array3D[j][k].alpha < i + 1)
                 {
                     redPoints = 1;
                     break;
                 }
 
-                /*checking the distance for the detected green point*/
+                /* checking the distance for the detected green point */
                 if (array3D[j][k].isCurbPoint == 1 && array3D[j][k].alpha >= i && array3D[j][k].alpha < i + 1)
                 {
                     d = sqrt(pow(0 - array3D[j][k].p.x, 2) + pow(0 - array3D[j][k].p.y, 2));
@@ -334,12 +340,12 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
                     }
                 }
             }
-            /*The previous "break" was used to exit the current circle, this one will exit all of them and proceed to the next angle.*/
+            /* The previous "break" was used to exit the current circle, this one will exit all of them and proceed to the next angle. */
             if (redPoints == 1)
                 break;
         }
 
-        /*adding the marker points to the array*/
+        /* adding the marker points to the array */
         if (ID1 != -1 && ID2 != -1)
         {
             markerPointsArray[cM][0] = array3D[ID1][ID2].p.x;
@@ -356,80 +362,80 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
         for (j = 0; j < indexArray[i]; j++)
         {
             pt = array3D[i][j].p;
-            /*road points*/
+            /* road points */
             if (array3D[i][j].isCurbPoint == 1)
                 cloud_filtered_Road.push_back(pt);
 
-            /*high points*/
+            /* high points */
             else if (array3D[i][j].isCurbPoint == 2)
                 cloud_filtered_High.push_back(pt);
         }
     }
 
     /*-- step 5.: setting up the marker --*/
-    /*There need to be at least 3 points to connect, otherwise errors might occur.*/
+    /* There need to be at least 3 points to connect, otherwise errors might occur. */
     if (cM > 2)
     {
-        /*There might be a case where points are in red-green-red (or the other way around) order next to each other.
+        /* There might be a case where points are in red-green-red (or the other way around) order next to each other.
         This is bad is because the green / red marker (line strip) in this case will only consist of 1 point.
         This is not recommended, every point needs to have a pair of the same color.
         If the 3. column of "markerPointsArray" has the value 1 then it belongs to the red line strip,
-        otherwise it belongs to the green one.*/
+        otherwise it belongs to the green one. */
 
-        /*If the first point is green but the second one is red,
-        then the first one will be added to the red line strip too.*/
+        /* If the first point is green but the second one is red,
+        then the first one will be added to the red line strip too. */
         if (markerPointsArray[0][3] == 0 && markerPointsArray[1][3] == 1)
             markerPointsArray[0][3] = 1;
 
-        /*If the last point is green but the second to last is red,
-        then the last one will be added to the red line strip too.*/
+        /* If the last point is green but the second to last is red,
+        then the last one will be added to the red line strip too. */
         if (markerPointsArray[cM - 1][3] == 0 && markerPointsArray[cM - 2][3] == 1)
             markerPointsArray[cM - 1][3] = 1;
 
-        /*If the first point is red but the second one is green,
-        then the first one will be added to the green line strip too.*/
+        /* If the first point is red but the second one is green,
+        then the first one will be added to the green line strip too. */
         if (markerPointsArray[0][3] == 1 && markerPointsArray[1][3] == 0)
             markerPointsArray[0][3] = 0;
 
-        /*If the last point is red but the second to last is green,
-        then the last one will be added to the green line strip too.*/
+        /* If the last point is red but the second to last is green,
+        then the last one will be added to the green line strip too. */
         if (markerPointsArray[cM - 1][3] == 1 && markerPointsArray[cM - 2][3] == 0)
             markerPointsArray[cM - 1][3] = 0;
 
-        /*Here we iterate through all the points.
+        /* Here we iterate through all the points.
         If a green point gets between two red ones, then it will be added to the red line strip too.
-        The first two and last two points are not checked - they were already set before.*/
+        The first two and last two points are not checked - they were already set before. */
         for (i = 2; i <= cM - 3; i++)
         {
             if (markerPointsArray[i][3] == 0 && markerPointsArray[i - 1][3] == 1 && markerPointsArray[i + 1][3] == 1)
                 markerPointsArray[i][3] = 1;
         }
 
-        /*Here we iterate through all the points.
+        /* Here we iterate through all the points.
         If a red point gets between two green ones, then it will be added to the green line strip too.
-        The first two and last two points are not checked - they were already set before.*/
+        The first two and last two points are not checked - they were already set before. */
         for (i = 2; i <= cM - 3; i++)
         {
             if (markerPointsArray[i][3] == 1 && markerPointsArray[i - 1][3] == 0 && markerPointsArray[i + 1][3] == 0)
                 markerPointsArray[i][3] = 0;
         }
 
-        visualization_msgs::MarkerArray ma;     //a marker array containing the green / red line strips
-        visualization_msgs::Marker line_strip;  //the current green or red section / line strip
-        geometry_msgs::Point point;             //point to fill the line strip with
-        float zavg = 0.0;                       //average z value (for the simplified polygon)
+        visualization_msgs::msg::MarkerArray ma;     // a marker array containing the green / red line strips
+        visualization_msgs::msg::Marker line_strip;  // the current green or red section / line strip
+        geometry_msgs::msg::Point point;             // point to fill the line strip with
+        float zavg = 0.0;                            // average z value (for the simplified polygon)
 
-        int lineStripID = 0;                    //ID of the given line strip
+        int lineStripID = 0;                         // ID of the given line strip
 
         line_strip.header.frame_id = params::fixedFrame;
-        line_strip.header.stamp = ros::Time();
-        line_strip.type = visualization_msgs::Marker::LINE_STRIP;
-        line_strip.action = visualization_msgs::Marker::ADD;
+        line_strip.header.stamp = node->now();
+        line_strip.type = visualization_msgs::msg::Marker::LINE_STRIP;
+        line_strip.action = visualization_msgs::msg::Marker::ADD;
 
-        /*We iterate through the points which will make up the marker.*/
+        /* We iterate through the points which will make up the marker. */
         for (i = 0; i < cM; i++)
         {
-            /*adding the given point to a "geometry_msgs::Point" type variable*/
+            /* adding the given point to a "geometry_msgs::msg::Point" type variable */
             point.x = markerPointsArray[i][0];
             point.y = markerPointsArray[i][1];
             point.z = markerPointsArray[i][2];
@@ -437,28 +443,28 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
             zavg += point.z;
             zavg /= i+1;
 
-            /*Adding the first point to the current line strip.
-            No conditions need to be met for the first point.*/
+            /* Adding the first point to the current line strip.
+            No conditions need to be met for the first point. */
             if (i == 0)
             {
                 line_strip.points.push_back(point);
                 line += xy(point.x,point.y);
             }
 
-            /*If the next point is from the same group (red or green) as the previous one
-            then it will be added to the line strip aswell.*/
+            /* If the next point is from the same group (red or green) as the previous one
+            then it will be added to the line strip aswell. */
             else if (markerPointsArray[i][3] == markerPointsArray[i - 1][3])
             {
                 line_strip.points.push_back(point);
                 line += xy(point.x,point.y);
 
-                /*In this "else if" section we will reach the last point and the last line strip will be created.*/
+                /* In this "else if" section we will reach the last point and the last line strip will be created. */
                 if (i == cM - 1)
                 {
                     line_strip.id = lineStripID;
                     marker_init(line_strip);
 
-                    /*setting the color of the line strip*/
+                    /* setting the color of the line strip */
                     if (markerPointsArray[i][3] == 0)
                     {
                         line_strip.color = setcolor(0.0, 1.0, 0.0, 1.0); //green
@@ -475,7 +481,7 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
                         boost::geometry::simplify(line, simplified, params::polysimp);
                         for(boost::geometry::model::linestring<xy>::const_iterator it = simplified.begin(); it != simplified.end(); it++)
                         {
-                            geometry_msgs::Point p;
+                            geometry_msgs::msg::Point p;
                             p.x = boost::geometry::get<0>(*it);
                             p.y = boost::geometry::get<1>(*it);
                             p.z = params::polyz;
@@ -490,14 +496,14 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
                 }
             }
 
-            /*change of category: red -> green
-            The line joining the two points is still red, so we add the point to the given line strip.*/
+            /* change of category: red -> green
+            The line joining the two points is still red, so we add the point to the given line strip. */
             else if (markerPointsArray[i][3] != markerPointsArray[i - 1][3] && markerPointsArray[i][3] == 0)
             {
                 line_strip.points.push_back(point);
                 line += xy(point.x,point.y);
 
-                /*The following points belong to a new line strip - a red one is being made here.*/
+                /* The following points belong to a new line strip - a red one is being made here. */
                 line_strip.id = lineStripID;
                 lineStripID++;
 
@@ -512,7 +518,7 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
                     boost::geometry::simplify(line, simplified, params::polysimp);
                     for(boost::geometry::model::linestring<xy>::const_iterator it = simplified.begin(); it != simplified.end(); it++)
                     {
-                        geometry_msgs::Point p;
+                        geometry_msgs::msg::Point p;
                         p.x = boost::geometry::get<0>(*it);
                         p.y = boost::geometry::get<1>(*it);
                         p.z = params::polyz;
@@ -528,12 +534,12 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
                 line += xy(point.x,point.y);
             }
 
-            /*change of category: green -> red
+            /* change of category: green -> red
             First we set up the green line strip, then we add the last point to the red one aswell,
-            since there is always a red line strip between a green and a red point.*/
+            since there is always a red line strip between a green and a red point. */
             else if (markerPointsArray[i][3] != markerPointsArray[i - 1][3] && markerPointsArray[i][3] == 1)
             {
-                /*the green marker*/
+                /* the green marker */
                 line_strip.id = lineStripID;
                 lineStripID++;
 
@@ -548,7 +554,7 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
                     boost::geometry::simplify(line, simplified, params::polysimp);
                     for(boost::geometry::model::linestring<xy>::const_iterator it = simplified.begin(); it != simplified.end(); it++)
                     {
-                        geometry_msgs::Point p;
+                        geometry_msgs::msg::Point p;
                         p.x = boost::geometry::get<0>(*it);
                         p.y = boost::geometry::get<1>(*it);
                         p.z = params::polyz;
@@ -561,21 +567,21 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
                 line_strip.points.clear();          //These points are not needed anymore.
                 boost::geometry::clear(line);
 
-                /*The previous point is required for the next line strip aswell.*/
+                /* The previous point is required for the next line strip aswell. */
                 point.x = markerPointsArray[i - 1][0];
                 point.y = markerPointsArray[i - 1][1];
                 point.z = markerPointsArray[i - 1][2];
                 line_strip.points.push_back(point);
                 line += xy(point.x,point.y);
 
-                /*The current point is required for the next line strip aswell.*/
+                /* The current point is required for the next line strip aswell. */
                 point.x = markerPointsArray[i][0];
                 point.y = markerPointsArray[i][1];
                 point.z = markerPointsArray[i][2];
                 line_strip.points.push_back(point);
                 line += xy(point.x,point.y);
             }
-            line_strip.lifetime = ros::Duration(0);
+            line_strip.lifetime = rclcpp::Duration(0);
         }
         if (params::zavg_allow)
         {
@@ -588,8 +594,8 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
             }
         }
 
-        /*removal of obsolete markers*/
-        line_strip.action = visualization_msgs::Marker::DELETE;
+        /* removal of obsolete markers */
+        line_strip.action = visualization_msgs::msg::Marker::DELETE;
         for (int del = lineStripID; del<ghostcount; del++)
         {
             line_strip.id++;
@@ -597,8 +603,8 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
         }
         ghostcount = lineStripID;
 
-        /*publishing the marker array*/
-        pub_marker.publish(ma);
+        /* publishing the marker array */
+        pub_marker->publish(ma);
     }
 
 
@@ -608,15 +614,15 @@ void Detector::filtered(const pcl::PointCloud<pcl::PointXYZI> &cloud){
     }
     
 
-    /*Road and High topic header*/
+    /* Road and High topic header */
     cloud_filtered_Road.header = cloud.header;
     cloud_filtered_ProbablyRoad.header = cloud.header;
     cloud_filtered_High.header = cloud.header;
     cloud_filtered_Box->header = cloud.header;
 
-    /*publishing*/
-    pub_road.publish(cloud_filtered_Road);  //filtered points (driveable road)
-    pub_high.publish(cloud_filtered_High);  //filtered points (non-driveable road)
-    pub_box.publish(cloud_filtered_Box);    //filtered points (non-road)
-    pub_pobroad.publish(cloud_filtered_ProbablyRoad);
+    /* publishing */
+    pub_road->publish(cloud_filtered_Road);  //filtered points (driveable road)
+    pub_high->publish(cloud_filtered_High);  //filtered points (non-driveable road)
+    pub_box->publish(cloud_filtered_Box);    //filtered points (non-road)
+    pub_pobroad->publish(cloud_filtered_ProbablyRoad);
 }
