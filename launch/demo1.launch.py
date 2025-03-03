@@ -34,10 +34,10 @@ def generate_launch_description():
         # Urban Road Filter Node with parameters loaded from YAML
         Node(
             package='urban_road_filter',
-            executable='lidar_road',
-            namespace='urban_road_filter',
+            executable='urban_road_filter',
+            namespace='main',
             name='urban_road_filter',
             output='screen',
-            parameters=[params_file]  # Load parameters from YAML file
+            parameters=[params_file]  
         )
     ])

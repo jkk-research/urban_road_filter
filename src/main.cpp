@@ -1,4 +1,5 @@
 #include "urban_road_filter/data_structures.hpp"
+#include "urban_road_filter/lidar_segmentation.hpp"
 #include "rclcpp/rclcpp.hpp"
 
 class UrbanRoadFilterNode : public rclcpp::Node {
@@ -42,7 +43,7 @@ public:
         );
 
         // Initialize Detector
-        detector_ = std::make_shared<Detector>(this);
+        detector_ = std::make_shared<Detector>(this->shared_from_this());
     }
 
 private:

@@ -1,8 +1,8 @@
-#include "urban_road_filter/include/urban_road_filter/data_structures.hpp"
+#include "urban_road_filter/data_structures.hpp"
 
 float params::angleFilter2;     //angle between two vectors, while keeping Z = 0
 
-void Detector::zZeroMethod(std::vector<std::vector<Point3D>>& array3D,int index,int* indexArray){
+void Detector::zZeroMethod(std::vector<std::vector<Point3D>>& array3D, int index, std::vector<int>& indexArray) {
     /*-- step 1.: filtering the NON-road points --*/
     int p2, p3;     //2nd and 3rd of the points that are being examined
 
@@ -55,10 +55,7 @@ void Detector::zZeroMethod(std::vector<std::vector<Point3D>>& array3D,int index,
                 vb2 = (1 / (float)params::curbPoints) * vb2;
 
                 bracket = (va1 * vb1 + va2 * vb2) / (sqrt(pow(va1, 2) + pow(va2, 2)) * sqrt(pow(vb1, 2) + pow(vb2, 2)));
-                if (bracket < -1)
-                    bracket = -1;
-                else if (bracket > 1)
-                    bracket = 1;
+                bracket = std::clamp(bracket, -1.0f, 1.0f);
 
                 alpha = acos(bracket) * 180 / M_PI;
 
