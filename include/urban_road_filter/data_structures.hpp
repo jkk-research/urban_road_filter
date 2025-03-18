@@ -112,9 +112,10 @@ namespace params {
     extern bool zavg_allow;
     extern float polysimp;
     extern float polyz;
+    extern int curbPoints;
+    extern float curbHeight;
 }
 
-/*For pointcloud filtering*/
 template <typename PointT>
 class FilteringCondition : public pcl::ConditionBase<PointT>
 {
@@ -136,4 +137,4 @@ private:
   FunctorT _evaluator;
 };
 
-#endif // URBAN_ROAD_FILTER_DATA_STRUCTURES_HPP_
+#endif 

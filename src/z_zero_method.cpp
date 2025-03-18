@@ -1,4 +1,5 @@
 #include "urban_road_filter/data_structures.hpp"
+#include "urban_road_filter/lidar_segmentation.hpp"
 
 float params::angleFilter2;     //angle between two vectors, while keeping Z = 0
 

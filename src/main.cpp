@@ -43,7 +43,7 @@ public:
         );
 
         // Initialize Detector
-        detector_ = std::make_shared<Detector>(this->shared_from_this());
+        detector_ = std::make_shared<Detector>(rclcpp::NodeOptions());
     }
 
 private:
