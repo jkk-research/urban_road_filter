@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>urban_road_filter</name>
+  <version>1.0.0</version>
+  <description>ROS 2 Real-Time LIDAR-based urban road and sidewalk detection algorithm for autonomous vehicles</description>
+
+  <maintainer email="herno@sze.hu">Ernő Horváth</maintainer>
+  <author email="herno@sze.hu">Ernő Horváth</author>
+  <author>Claudiu Pozna</author>
+  <author>Miklós Unger</author>
+  
+  <license>MIT</license>
+  
+  <url type="website">https://github.com/jkk-research/urban_road_filter</url>
+  <url type="doi">https://doi.org/10.3390/s22010194</url>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  
+  <depend>rclcpp</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>visualization_msgs</depend>
+  <depend>pcl_conversions</depend>
+  <depend>pcl_ros</depend>
+  <depend>rclcpp_components</depend>
+  <depend>libpcl-all-dev</depend>
+  
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

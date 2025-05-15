@@ -1,0 +1,54 @@
+# This file consolidates all parameters for the urban_road_filter package.
+urban_road_filter:
+  ros__parameters:
+    fixed_frame: "left_os1/os1_lidar"  # Fixed frame. (Restart needed if it changes.)
+    topic_name: "/left_os1/os1_cloud_node/points"  # The desired topic to subscribe to.
+
+    # Enabling individual detection methods.
+    x_zero_method: true  # x zero method.
+    z_zero_method: true  # z zero method.
+    star_shaped_method: true  # star shaped method.
+    blind_spots: true  # Filtering blind spots.
+
+    # Blindspot detection (x-direction)
+    xDirection: true  # Added xDirection parameter with a valid boolean value.
+
+    # LIDAR's vertical resolution
+    interval: 0.18
+
+    # Estimated minimum height of the curb (in meters).
+    curb_height: 0.05
+
+    # Estimated number of points on the curb.
+    curb_points: 5
+
+    # Width of the beam zone (in degrees).
+    beamZone: 30
+
+    # Size of the examined area.
+    min_x: 0.0
+    max_x: 30.0
+    min_y: -10.0
+    max_y: 10.0
+    min_z: -3.0
+    max_z: -1.0
+
+    # Parameters for detection methods.
+    cylinder_deg_x: 150.0  # Included angle of the examined triangle (three points) for x_zero_method (in degrees).
+    cylinder_deg_z: 140.0  # Included angle of the examined triangle (two vectors) for z_zero_method (in degrees).
+    curb_slope_deg: 50.0  # Radial threshold for star_shaped_method (in degrees).
+
+    # Coefficients for CSP (Curvature Simplification Process).
+    kdev_param: 1.225  # Dispersion coefficient.
+    kdist_param: 2.0  # Distance coefficient.
+
+    # Star-beam Filter
+    starbeam_filter: false  # Use rectangular beams for detection instead of the whole sectors (StarShaped).
+
+    dmin_param: 10  # Minimum number of points for dispersion (CSP).
+
+    # Polygon simplification settings (CSP).
+    simple_poly_allow: true  # Use simplified polygon (height data will be lost).
+    poly_s_param: 0.7  # Coefficient of polygon simplification.
+    poly_z_manual: -1.5  # Set a constant polygon height.
+    poly_z_avg_allow: true  # Set polygon height to average value.
