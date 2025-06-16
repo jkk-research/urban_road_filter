@@ -2,6 +2,9 @@
 
 <img src="img/urban_road_filter_anim01.gif" height=620/> <img src="img/urban_road_filter_static01.png" height=620/>
 
+> [!CAUTION]
+> ROS 1 is end of life. Use [ROS 2](https://github.com/jkk-research/urban_road_filter/tree/ros2) version instead.
+
 # Dependency
 
 - [ROS](http://wiki.ros.org/ROS/Installation) (tested with Kinetic and Melodic)
@@ -13,7 +16,7 @@ Use the following commands to download and compile the package.
 
 ```
 cd ~/catkin_ws/src
-git clone https://github.com/jkk-research/urban_road_filter
+git clone https://github.com/jkk-research/urban_road_filter  -b ros1
 catkin build urban_road_filter
 ```
 
