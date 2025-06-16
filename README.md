@@ -4,17 +4,29 @@
 
 # Dependency
 
-- [ROS 2](https://docs.ros.org/en/humble/index.html) (tested with Humble)
+- [ROS 2](https://docs.ros.org/en/humble/index.html) (tested with [Humble](https://docs.ros.org/en/humble/index.html) nad [Jazzy](https://docs.ros.org/en/jazzy/index.html))
 - [PCL](https://pointclouds.org/)
 
-# Install
+# Install (download and build)
 
 Use the following commands to download and compile the package.
 
-```
+```bash
 cd ~/ros2_ws/src
-git clone https://github.com/jkk-research/urban_road_filter
-colcon build --packages-select urban_road_filter --symlink-install
+```
+
+```bash
+git clone https://github.com/jkk-research/urban_road_filter -b ros2
+```
+
+And build:
+
+```bash
+cd ~/ros2_ws
+```
+
+```bash
+colcon build --packages-select urban_road_filter --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release
 ```
 
 # Getting started
@@ -23,7 +35,13 @@ Issue the following commands to start ROS 2, play sample data, and start the alg
 
 In a **new terminal** start ROS 2:
 
-```
+Don't forget to source your workspace first
+<details>
+source ~/ros2_ws/install/setup.bash
+</details>
+
+
+```bash
 ros2 launch urban_road_filter urban_road_filter.launch.py
 ```
 
@@ -91,7 +109,15 @@ If you use any of this code, please consider citing the [paper](https://www.mdpi
 
 # Videos and images
 
+[<img src="img/yt_demo01.png" width=213/>](https://www.youtube.com/watch?v=T2qi4pldR-E)
+[<img src="img/yt_tutorial01.png" width=213/>](https://www.youtube.com/watch?v=HHnj4VcbSy4)
 
+[<img src="img/yt_demo02.png" width=213/>](https://www.youtube.com/watch?v=9tdzo2AyaHM)
+[<img src="img/yt_demo03.png" width=213/>](https://www.youtube.com/watch?v=lp6q_QvWA-Y)
+
+<img src="img/marker_poly01.png" width=440/>
+<img src="img/marker_road_high01.png" width=440/>
+<img src="img/marker_poly02.png" width=440/>
 
 # ROS publications / subscriptions
 
