@@ -4,7 +4,7 @@
 
 # Dependency
 
-- [ROS 2](https://docs.ros.org/en/humble/index.html) (tested with [Humble](https://docs.ros.org/en/humble/index.html) nad [Jazzy](https://docs.ros.org/en/jazzy/index.html))
+- [ROS 2](https://docs.ros.org/en/humble/index.html) (tested with [![Static Badge](https://img.shields.io/badge/ROS_2-Humble-34aec5)](https://docs.ros.org/en/humble/) and [![Static Badge](https://img.shields.io/badge/ROS_2-Jazzy-34aec5)](https://docs.ros.org/en/jazzy/))
 - [PCL](https://pointclouds.org/)
 
 # Install (download and build)
